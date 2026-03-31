@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# 64-bit only (must come before core_minimal.mk inheritance chain)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
+
 # Inherit from NX809J device
 $(call inherit-product, device/nubia/NX809J/device.mk)
 
