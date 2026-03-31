@@ -30,16 +30,6 @@ PRODUCT_SHIPPING_API_LEVEL := 36
 TARGET_SCREEN_HEIGHT := 2688
 TARGET_SCREEN_WIDTH := 1216
 
-# Boot control
-PRODUCT_PACKAGES += \
-    android.hardware.boot@1.2-impl-qti \
-    android.hardware.boot@1.2-impl-qti.recovery \
-    android.hardware.boot@1.2-service
-
-# Display
-PRODUCT_PACKAGES += \
-    android.hardware.graphics.common-V6-ndk
-
 # Dynamic partitions
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 
@@ -51,18 +41,8 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     fs_config_files
 
-# Firmware
+# Firmware (vendor blobs installed via PRODUCT_COPY_FILES in vendor mk)
 $(call inherit-product-if-exists, vendor/nubia/NX809J/NX809J-vendor.mk)
-
-# Gatekeeper
-PRODUCT_PACKAGES += \
-    android.hardware.gatekeeper@1.0-impl-qti \
-    android.hardware.gatekeeper@1.0-service-qti
-
-# Health
-PRODUCT_PACKAGES += \
-    android.hardware.health-service.qti \
-    android.hardware.health-service.qti_recovery
 
 # Init
 PRODUCT_PACKAGES += \
@@ -71,18 +51,6 @@ PRODUCT_PACKAGES += \
 
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/rootdir/etc/fstab.qcom:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.qcom
-
-# IR Blaster (confirmed: consumerir.zte.so in vendor/lib64/hw/)
-PRODUCT_PACKAGES += \
-    android.hardware.ir-service
-
-# Keymaster / Keymint
-PRODUCT_PACKAGES += \
-    android.hardware.security.keymint-V3-ndk
-
-# NFC (ST54J — confirmed: nfc-service-aidl, init.nfc.st54j.rc)
-PRODUCT_PACKAGES += \
-    android.hardware.nfc-V1-ndk
 
 # Overlays
 PRODUCT_PACKAGES += \
@@ -100,18 +68,3 @@ PRODUCT_PACKAGES += \
     update_engine \
     update_engine_sideload \
     update_verifier
-
-# USB
-PRODUCT_PACKAGES += \
-    android.hardware.usb-service.qti \
-    android.hardware.usb.gadget-service.qti
-
-# Vibrator (confirmed: vendor.qti.hardware.vibrator.service + zte_vibrator sysfs)
-PRODUCT_PACKAGES += \
-    android.hardware.vibrator-V2-ndk
-
-# WiFi
-PRODUCT_PACKAGES += \
-    android.hardware.wifi-V2-ndk \
-    android.hardware.wifi.hostapd-V2-ndk \
-    android.hardware.wifi.supplicant-V3-ndk
