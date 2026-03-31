@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright (C) 2025 The LineageOS Project
+    SPDX-License-Identifier: Apache-2.0
+-->
+<resources>
+    <!-- Display -->
+    <integer name="config_screenBrightnessSettingMinimum">1</integer>
+    <integer name="config_screenBrightnessSettingMaximum">255</integer>
+    <integer name="config_screenBrightnessSettingDefault">128</integer>
+    <bool name="config_automatic_brightness_available">true</bool>
+
+    <!-- Under-display camera (UDC) — reserve status bar area -->
+    <dimen name="status_bar_height_portrait">48dp</dimen>
+
+    <!-- Fingerprint (3D ultrasonic under-display) -->
+    <bool name="config_supportScreenIdleLock">true</bool>
+
+    <!-- NFC -->
+    <bool name="config_nfc_hw_capability">true</bool>
+
+    <!-- WiFi -->
+    <bool name="config_wifi_dual_band_support">true</bool>
+    <integer name="config_wifi_framework_scan_interval">10000</integer>
+
+    <!-- Telephony -->
+    <bool name="config_voice_capable">true</bool>
+    <bool name="config_sms_capable">true</bool>
+
+    <!-- USB -->
+    <bool name="config_hasUsbAccessory">true</bool>
+
+    <!-- Battery (7500mAh) -->
+    <integer name="config_criticalBatteryWarningLevel">5</integer>
+    <integer name="config_lowBatteryWarningLevel">15</integer>
+</resources>

@@ -1,0 +1,30 @@
+# Copyright (C) 2025 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# NX809J device-specific file contexts
+# Paths verified against device extraction 20260331
+
+# Fan control (/sys/kernel/fan/ — confirmed: fan_enable, fan_speed_count)
+/sys/kernel/fan(/.*)?                                   u:object_r:sysfs_fan:s0
+
+# LED control (aw22xxx — confirmed: brightness, cfg, effect at /sys/class/leds/aw22xxx_led/)
+/sys/class/leds/aw22xxx_led(/.*)?                       u:object_r:sysfs_leds_aw22xxx:s0
+
+# Shoulder trigger SAR sensors (confirmed: aot_cail, awrw at /sys/class/leds/sar[01]/)
+/sys/class/leds/sar[01](/.*)?                           u:object_r:sysfs_sar_trigger:s0
+
+# Micropump / liquid cooling (confirmed: enable, freq at /proc/driver/micropump/)
+/proc/driver/micropump(/.*)?                            u:object_r:proc_micropump:s0
+
+# Haptic engine (confirmed: activate, activate_aw at /sys/class/leds/zte_vibrator/)
+/sys/class/leds/zte_vibrator(/.*)?                      u:object_r:sysfs_vibrator:s0
+
+# ZTE-specific vendor binaries
+/(vendor|system/vendor)/bin/hw/vendor\.zte\.fingerprint\.ifaaaidl-service   u:object_r:hal_fingerprint_default_exec:s0
+/(vendor|system/vendor)/bin/hw/vendor\.zte\.fingerprint\.ztecmdaidl-service u:object_r:hal_fingerprint_default_exec:s0
+/(vendor|system/vendor)/bin/hw/vendor\.zte\.ldd\.cmd-service               u:object_r:hal_light_default_exec:s0
+/(vendor|system/vendor)/bin/battery_record_daemon                          u:object_r:vendor_battery_record_exec:s0
+/(vendor|system/vendor)/bin/vendordiag                                     u:object_r:vendordiag_exec:s0
+
+# Logdump partition
+/dev/block/bootdevice/by-name/logdump                   u:object_r:logdump_block_device:s0

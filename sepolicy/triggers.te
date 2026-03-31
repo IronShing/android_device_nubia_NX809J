@@ -1,0 +1,8 @@
+# Shoulder trigger SAR sensors (Awinic)
+type sysfs_sar_trigger, fs_type, sysfs_type;
+
+allow system_app sysfs_sar_trigger:dir search;
+allow system_app sysfs_sar_trigger:file rw_file_perms;
+
+allow system_server sysfs_sar_trigger:dir search;
+allow system_server sysfs_sar_trigger:file rw_file_perms;

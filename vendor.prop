@@ -1,0 +1,32 @@
+# Copyright (C) 2025 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+
+# TODO: Populate from vendor/build.prop after extraction
+
+# Audio
+ro.vendor.audio.sdk.fluencetype=none
+
+# Bluetooth
+persist.vendor.bt.a2dp_offload_cap=sbc-aptx-aptxtws-aptxhd-aac-ldac-aptxadaptiver2
+
+# Camera
+camera.disable_zsl_mode=true
+
+# Display
+ro.vendor.display.sensortype=2
+vendor.display.disable_idle_time_hdr=1
+
+# Fingerprint
+persist.vendor.sensors.enable.udfps_sensor=true
+
+# Graphics
+debug.sf.hw=1
+debug.egl.hw=1
+ro.hardware.egl=adreno
+ro.hardware.vulkan=adreno
+
+# NFC
+ro.nfc.port=I2C
+
+# WiFi
+wifi.interface=wlan0

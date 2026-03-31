@@ -1,0 +1,61 @@
+# Copyright (C) 2025 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+
+# Red Magic 11 Pro (NX809J) — Hardware init
+
+on boot
+    # Shoulder triggers (Awinic SAR capacitive sensors)
+    # Left trigger: /dev/input/event4 (KEYCODE_F7)
+    # Right trigger: /dev/input/event5 (KEYCODE_F8)
+    write /sys/class/leds/sar0/mode_operation 1
+    write /sys/class/leds/sar1/mode_operation 1
+    chown system system /sys/class/leds/sar0/mode_operation
+    chown system system /sys/class/leds/sar1/mode_operation
+    chown system system /sys/class/leds/sar0/baseline
+    chown system system /sys/class/leds/sar0/diff
+    chown system system /sys/class/leds/sar0/raw
+    chown system system /sys/class/leds/sar0/sensy_config
+    chown system system /sys/class/leds/sar1/baseline
+    chown system system /sys/class/leds/sar1/diff
+    chown system system /sys/class/leds/sar1/raw
+    chown system system /sys/class/leds/sar1/sensy_config
+
+    # Fan control
+    # Levels: 0=off, 1-5=speed, PWM: 0-255, RPM: fan_speed_count
+    chown system system /sys/kernel/fan/fan_enable
+    chown system system /sys/kernel/fan/fan_speed_level
+    chown system system /sys/kernel/fan/fan_speed_pwm
+    chown system system /sys/kernel/fan/fan_speed_count
+    chmod 0664 /sys/kernel/fan/fan_enable
+    chmod 0664 /sys/kernel/fan/fan_speed_level
+    chmod 0664 /sys/kernel/fan/fan_speed_pwm
+    chmod 0444 /sys/kernel/fan/fan_speed_count
+
+    # LED control (aw22xxx driver)
+    # Effect format: 0x[ZONE]00[MODE]00[COLOR]
+    # Zone: 1=Logo, 2=Shoulder, 3=Fan
+    # Mode: 0=Off, 2=Constant, 3=Breathing, 4=Flash
+    # Color: 1=Red, 2=Green, 3=Blue, 4=Yellow, 5=Purple, 6=Cyan, 7=White, 8=Orange, 9=Pink
+    # Fan power rail must be enabled first for fan LED
+    chown system system /sys/class/leds/aw22xxx_led/effect
+    chown system system /sys/class/leds/aw22xxx_led/cfg
+    chmod 0664 /sys/class/leds/aw22xxx_led/effect
+    chmod 0664 /sys/class/leds/aw22xxx_led/cfg
+
+    # Micropump / Liquid cooling
+    chown system system /proc/driver/micropump/enable
+    chmod 0664 /proc/driver/micropump/enable
+
+    # Haptic engine (ZTE vibrator)
+    chown system system /sys/class/leds/zte_vibrator/duration
+    chown system system /sys/class/leds/zte_vibrator/gain
+    chown system system /sys/class/leds/zte_vibrator/activate
+    chmod 0664 /sys/class/leds/zte_vibrator/duration
+    chmod 0664 /sys/class/leds/zte_vibrator/gain
+    chmod 0664 /sys/class/leds/zte_vibrator/activate
+
+    # Magic Slider (gpio-keys_nubia, SW_PEN_INSERTED)
+    # /dev/input/event1
+    # Mode config: settings put system fourth_physical_key_function_value <MODE>
+    chmod 0660 /dev/input/event1
+    chown system system /dev/input/event1

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright (C) 2025 The LineageOS Project
+    SPDX-License-Identifier: Apache-2.0
+
+    Device VINTF manifest for NX809J.
+    TODO: Populate from vendor_manifest.xml after extraction.
+-->
+<manifest version="2.0" type="device">
+    <!-- Vibrator -->
+    <hal format="aidl">
+        <name>android.hardware.vibrator</name>
+        <version>2</version>
+        <fqname>IVibrator/default</fqname>
+    </hal>
+</manifest>
