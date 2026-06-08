@@ -23,9 +23,8 @@ PRODUCT_PACKAGES += \
     checkpoint_gc \
     otapreopt_script
 
-# API — must match RELEASE_PLATFORM_SDK_VERSION (35 for ap3a)
-# Stock device ships with SDK 36 but ap3a framework only supports up to 35.
-PRODUCT_SHIPPING_API_LEVEL := 35
+# API — device ships with Android 16 / SDK 36 (bp4a release config)
+PRODUCT_SHIPPING_API_LEVEL := 36
 
 
 

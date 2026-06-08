@@ -8,5 +8,5 @@ PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/lineage_NX809J.mk
 
 COMMON_LUNCH_CHOICES := \
-    lineage_NX809J-ap3a-userdebug \
-    lineage_NX809J-ap3a-eng
+    lineage_NX809J-bp4a-userdebug \
+    lineage_NX809J-bp4a-eng
