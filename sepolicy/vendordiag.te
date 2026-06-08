@@ -1,0 +1,2 @@
+type vendordiag, domain;
+type vendordiag_exec, exec_type, vendor_file_type, file_type;

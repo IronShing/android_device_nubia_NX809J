@@ -1,0 +1,16 @@
+# Bring-up scratch / working files — not for publication
+.closure_baseline_diff.txt
+.closure_unresolved.txt
+.unattended_progress.md
+.reference/
+*.pre_*_bak
+*_bak
+*.bak
+__pycache__/
+*.pyc
+.bringup_*
+.*_verify.txt
+.apex_closure_diff.txt
+.unattended_*
+RULE2_REFINED.md
+*.bak_*

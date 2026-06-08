@@ -1,0 +1,92 @@
+# init.recovery.qcom.rc for TWRP - Nubia Red Magic 11 Pro (NX809J)
+
+on early-init
+    mkdir /firmware 0771 system system
+    mkdir /bt_firmware 0771 system system
+    mkdir /dsp 0771 media media
+
+on init
+    # Set backlight
+    write /sys/class/backlight/panel0-backlight/brightness 200
+
+    # USB configfs
+    setprop sys.usb.configfs 1
+
+    # Create mount points
+    mkdir /mnt/vendor 0755 root root
+    mkdir /mnt/vendor/persist 0771 system system
+
+on fs
+    wait /dev/block/platform/soc/${ro.boot.bootdevice}
+    symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+
+    # Mount persist for fingerprint calibration data
+    mount ext4 /dev/block/bootdevice/by-name/persist /mnt/vendor/persist noatime nosuid nodev barrier=1
+    symlink /mnt/vendor/persist /persist
+
+on late-fs
+    # Mount firmware
+    wait /dev/block/bootdevice/by-name/modem
+    mount vfat /dev/block/bootdevice/by-name/modem${ro.boot.slot_suffix} /firmware ro shortname=lower,uid=1000,gid=1000,dmask=227,fmask=337,context=u:object_r:firmware_file:s0
+
+on property:ro.boot.usbcontroller=*
+    setprop sys.usb.controller ${ro.boot.usbcontroller}
+    wait /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode
+    write /sys/bus/platform/devices/${ro.boot.usb.dwc3_msm:-a600000.ssusb}/mode peripheral
+    wait /sys/class/udc/${ro.boot.usbcontroller} 1
+
+on boot
+    # Enable ADB
+    setprop sys.usb.ffs.ready 1
+    start health-hal-2-1
+    # Start TEE daemon early - keymint depends on it
+    start vendor.qseecomd
+
+# Once qseecomd registers listeners, start crypto HALs
+on property:vendor.sys.listeners.registered=true
+    start vendor.keymint
+    start vendor.gatekeeper
+    start vendor.weaver
+
+on property:ro.crypto.state=encrypted
+    start vendor.qseecomd
+
+# TEE communication daemon - must start before keymint/gatekeeper
+service vendor.qseecomd /vendor/bin/qseecomd
+    class core
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+# KeyMint HAL (SPU-backed)
+service vendor.keymint /vendor/bin/hw/android.hardware.security.keymint-service-spu-qti
+    class early_hal
+    user system
+    group system drmrpc
+    disabled
+    seclabel u:r:recovery:s0
+
+# Gatekeeper HAL (Rust, SPU-backed)
+service vendor.gatekeeper /vendor/bin/hw/android.hardware.gatekeeper-rust-service-qti
+    class early_hal
+    user system
+    group system
+    disabled
+    seclabel u:r:recovery:s0
+
+# Weaver HAL (SPU-backed, credential storage)
+service vendor.weaver /vendor/bin/hw/android.hardware.weaver-service-spu-qti
+    class early_hal
+    user system
+    group system
+    disabled
+    seclabel u:r:recovery:s0
+
+# Health HAL
+service health-hal-2-1 /vendor/bin/hw/android.hardware.health-service.qti
+    class hal
+    user system
+    group system
+    disabled
+    seclabel u:r:recovery:s0

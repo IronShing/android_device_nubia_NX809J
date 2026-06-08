@@ -1,0 +1,2 @@
+type vendor_battery_record, domain;
+type vendor_battery_record_exec, exec_type, vendor_file_type, file_type;

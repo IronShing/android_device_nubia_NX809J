@@ -1,5 +1,5 @@
 # Haptic engine (ZTE vibrator)
-type sysfs_vibrator, fs_type, sysfs_type;
+# sysfs_vibrator already defined in system/sepolicy/public/file.te
 
 allow system_app sysfs_vibrator:dir search;
 allow system_app sysfs_vibrator:file rw_file_perms;

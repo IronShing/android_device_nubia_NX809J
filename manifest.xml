@@ -6,11 +6,11 @@
     Device VINTF manifest for NX809J.
     TODO: Populate from vendor_manifest.xml after extraction.
 -->
-<manifest version="2.0" type="device">
-    <!-- Vibrator -->
-    <hal format="aidl">
-        <name>android.hardware.vibrator</name>
-        <version>2</version>
-        <fqname>IVibrator/default</fqname>
-    </hal>
+<manifest version="2.0" type="device" target-level="202504">
+    <!-- target-level (Shipping FCM Version) sourced byte-exact from stock
+         Nubia vendor manifest_canoe.xml: <manifest version="9.0" type="device"
+         target-level="202504">. iter 213 fix for "Device manifest does not
+         specify Shipping FCM Version" error from checkvintf at OTA generation
+         step. -->
+    <!-- HALs are provided by extracted vendor manifest -->
 </manifest>
