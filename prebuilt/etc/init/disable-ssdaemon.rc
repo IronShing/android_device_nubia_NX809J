@@ -1,0 +1,16 @@
+# Disable crash-looping, non-functional modem-subsystem daemons.
+# They fail to dlopen /vendor/lib64/libss-qti.so and SIGSEGV in libss-modem.so's
+# QMI callback ~every 5s (hundreds of tombstones). RIL/data are unaffected by
+# stopping them. Each rule fires when the service comes up and immediately stops
+# it, breaking the respawn loop. Injected into /product/etc/init/ during staging.
+on property:init.svc.init-ssdaemon_vendor-sh=running
+    stop init-ssdaemon_vendor-sh
+
+on property:init.svc.qti-ssdaemon_vendor=running
+    stop qti-ssdaemon_vendor
+
+on property:init.svc.qti-msdaemon_vendor-0=running
+    stop qti-msdaemon_vendor-0
+
+on property:init.svc.qti-msdaemon_vendor-1=running
+    stop qti-msdaemon_vendor-1

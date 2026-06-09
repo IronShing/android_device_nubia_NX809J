@@ -16,6 +16,9 @@
     <!-- Fingerprint (3D ultrasonic under-display) -->
     <bool name="config_supportScreenIdleLock">true</bool>
 
+    <!-- Gestures: double-tap-to-wake (Synaptics TCM touch supports gesture wake) -->
+    <bool name="config_supportDoubleTapWake">true</bool>
+
     <!-- NFC -->
     <bool name="config_nfc_hw_capability">true</bool>
 

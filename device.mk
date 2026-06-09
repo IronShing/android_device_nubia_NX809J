@@ -43,6 +43,39 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     fs_config_files
 
+# Bluetooth classic profiles. The closure build shipped ONLY the LE-Audio
+# profile defaults; every classic profile (A2DP source, HFP AG, AVRCP, GATT,
+# HID, PAN, MAP, PBAP, OPP) was unset, so no classic profile service started
+# -> BT bonded but produced no audio on ANY device. Root-caused 2026-06-08 via
+# an empty "Enabled Profile Services" list (the real fix; the earlier
+# a2dp_offload.disabled idea was a red herring -- offload works fine).
+PRODUCT_PRODUCT_PROPERTIES += \
+    bluetooth.profile.a2dp.source.enabled=true \
+    bluetooth.profile.hfp.ag.enabled=true \
+    bluetooth.profile.avrcp.target.enabled=true \
+    bluetooth.profile.gatt.enabled=true \
+    bluetooth.profile.hid.host.enabled=true \
+    bluetooth.profile.hid.device.enabled=true \
+    bluetooth.profile.pan.nap.enabled=true \
+    bluetooth.profile.pan.panu.enabled=true \
+    bluetooth.profile.map.server.enabled=true \
+    bluetooth.profile.pbap.server.enabled=true \
+    bluetooth.profile.opp.enabled=true \
+    bluetooth.profile.sap.server.enabled=true
+
+# IR remote: the HAL ships in the stock vendor (vendor.ir-default +
+# consumerir.zte.so). We ship only the consumerir feature permission so a
+# user-installed IR app works; the proprietary KooKong app is NOT bundled
+# (redistribution). Sideload an IR remote app of your choice.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/permissions/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/android.hardware.consumerir.xml
+
+# Disable the crash-looping modem-subsystem daemons (init-ssdaemon_vendor,
+# qti-ssdaemon/msdaemon; libss-qti dlopen fails — RIL unaffected). Was
+# staging-injected during bring-up; now in source for permanence.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/init/disable-ssdaemon.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-ssdaemon.rc
+
 # Firmware (vendor blobs installed via PRODUCT_COPY_FILES in vendor mk)
 $(call inherit-product-if-exists, vendor/nubia/NX809J/NX809J-vendor.mk)
 
