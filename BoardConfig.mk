@@ -125,6 +125,11 @@ TARGET_KERNEL_ARCH := arm64
 BOARD_KERNEL_IMAGE_NAME := Image
 TARGET_PREBUILT_KERNEL := device/nubia/NX809J-kernel/prebuilt/Image
 TARGET_PREBUILT_DTB := device/nubia/NX809J-kernel/prebuilt/dtb.img
+# TARGET_PREBUILT_DTB is a no-op in AOSP's build/make (nothing consumes it).
+# The rule that produces $(PRODUCT_OUT)/dtb.img (needed by recovery/boot/vendor_boot)
+# only exists when BOARD_PREBUILT_DTBIMAGE_DIR is set; the recipe is `cat $(DIR)/*.dtb > dtb.img`.
+# Our prebuilt dtb.img is an already-merged multi-dtb blob, exposed as a single .dtb so cat is identity.
+BOARD_PREBUILT_DTBIMAGE_DIR := device/nubia/NX809J-kernel/prebuilt/dtb
 BOARD_PREBUILT_DTBOIMAGE := device/nubia/NX809J-kernel/prebuilt/dtbo_stock.img
 BOARD_USES_GENERIC_KERNEL_IMAGE := true
 
