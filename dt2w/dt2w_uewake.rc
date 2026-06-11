@@ -1,0 +1,15 @@
+service dt2w_uewake /system_ext/bin/dt2w_uewake
+    class late_start
+    user root
+    group root system input
+    disabled
+
+on property:persist.sys.dt2w.enabled=1
+    start dt2w_uewake
+
+on property:persist.sys.dt2w.enabled=0
+    stop dt2w_uewake
+    write /proc/touchscreen/wake_gesture 0
+
+on property:sys.boot_completed=1 && property:persist.sys.dt2w.enabled=1
+    start dt2w_uewake

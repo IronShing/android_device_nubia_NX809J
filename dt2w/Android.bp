@@ -1,0 +1,9 @@
+// NX809J double-tap-to-wake uevent->KEY_WAKEUP bridge
+cc_binary {
+    name: "dt2w_uewake",
+    srcs: ["dt2w_uewake.c"],
+    shared_libs: ["liblog"],
+    cflags: ["-Wall", "-Werror"],
+    init_rc: ["dt2w_uewake.rc"],
+    system_ext_specific: true,
+}

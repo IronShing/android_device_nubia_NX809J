@@ -1,0 +1,2 @@
+# uinput device "dt2w_uewake" — emits KEY_WAKEUP (143) for double-tap-to-wake.
+key 143   WAKEUP   WAKE
