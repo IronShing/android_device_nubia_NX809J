@@ -3,6 +3,13 @@
 # specify MF_CHECK, and must come before any filesystems that do specify MF_CHECK
 #
 # Extracted from NX809J stock firmware V11.0.14MR4_EA /vendor/etc/fstab.qcom
+#
+# DEAD-LETTER in our deployment model — kept for reference only.
+# First-stage mount is owned by the STOCK vendor_boot we flash (its
+# first_stage_ramdisk/fstab.qcom does the real mounting). This copy is inert
+# regardless of which partition it installs to; moving it to odm would NOT put
+# it on the first-stage path. Left as-is intentionally — do not wire it up
+# expecting it to take effect.
 
 #<src>                                                 <mnt_point>            <type>  <mnt_flags and options>                            <fs_mgr_flags>
 system                                                  /system                erofs   ro                                                   wait,slotselect,avb=vbmeta_system,logical,first_stage_mount,avb_keys=/avb/q-gsi.avbpubkey:/avb/r-gsi.avbpubkey:/avb/s-gsi.avbpubkey:/avb/t-gsi.avbpubkey:/avb/u-gsi.avbpubkey:/avb/v-gsi.avbpubkey
