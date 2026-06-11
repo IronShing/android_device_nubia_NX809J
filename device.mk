@@ -50,6 +50,7 @@ PRODUCT_PACKAGES += \
 # an empty "Enabled Profile Services" list (the real fix; the earlier
 # a2dp_offload.disabled idea was a red herring -- offload works fine).
 PRODUCT_PRODUCT_PROPERTIES += \
+    persist.sys.dt2w.enabled=1 \
     bluetooth.profile.a2dp.source.enabled=true \
     bluetooth.profile.hfp.ag.enabled=true \
     bluetooth.profile.avrcp.target.enabled=true \
@@ -70,11 +71,50 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/permissions/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/android.hardware.consumerir.xml
 
+# Desktop mode: declare freeform window management so Android 16 desktop
+# windowing is fully enabled. Three pieces must all be present:
+#   1. the freeform_window_management feature (PackageManager) — below;
+#   2. the enable_desktop_windowing_mode / enable_desktop_mode_through_dev_option
+#      aconfig flags (ENABLED in the build, verified baked into system aconfig_flags.pb);
+#   3. the framework-res config overlay below — config_canInternalDisplayHostDesktops
+#      and config_isDesktopModeDevOptionSupported default to FALSE in AOSP, so without
+#      this overlay desktop mode is unavailable on the internal display / dev option.
+# The overlay MUST be registered as a static PRODUCT_PACKAGE_OVERLAYS (baked into
+# framework-res.apk, same mechanism vendor/lineage/overlay/common uses to set
+# config_isDesktopModeSupported=true). It was previously authored as a never-built RRO
+# (not in PRODUCT_PACKAGES) → the two extra bools never applied → desktop mode broken.
+PRODUCT_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay
+
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.software.freeform_window_management.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/android.software.freeform_window_management.xml
+
+# Declare the fingerprint feature so PackageManager exposes FEATURE_FINGERPRINT
+# and SystemServer starts FingerprintService. Shipped via system_ext because the
+# vendor partition is spliced from stock and the unit we ship (h1_build/vendor_a.img)
+# carries only qti_fingerprint_interface.xml, not android.hardware.fingerprint.xml.
+# Harmless duplicate if a future vendor also declares it (PackageManager dedupes).
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.fingerprint.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/android.hardware.fingerprint.xml
+
 # Disable the crash-looping modem-subsystem daemons (init-ssdaemon_vendor,
 # qti-ssdaemon/msdaemon; libss-qti dlopen fails — RIL unaffected). Was
 # staging-injected during bring-up; now in source for permanence.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/disable-ssdaemon.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-ssdaemon.rc
+
+# Double-tap-to-wake (WORKING). The ZTE/Synaptics zte_tpd driver detects the
+# double-tap in low-power gesture mode and, instead of an input KEY_WAKEUP, fires
+# a "double_tap=true" netlink uevent + holds the SoC awake ~2s (pm_wakeup_ws_event).
+# Stock RedMagicOS had a userspace consumer of that uevent; LOS didn't. dt2w_uewake
+# is that consumer: it arms /proc/touchscreen/wake_gesture, listens on the netlink
+# socket, and on "double_tap=true" injects KEY_WAKEUP via a uinput device
+# (dt2w_uewake.kl flags it WAKE) so the framework wakes the display.
+# Gated on persist.sys.dt2w.enabled, defaulted ON via PRODUCT_PRODUCT_PROPERTIES
+# above (daemon auto-starts at boot). To disable (save standby battery):
+# setprop persist.sys.dt2w.enabled 0 (persists; disarms wake_gesture too).
+PRODUCT_PACKAGES += dt2w_uewake
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/dt2w/dt2w_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/dt2w_uewake.kl
 
 # Firmware (vendor blobs installed via PRODUCT_COPY_FILES in vendor mk)
 $(call inherit-product-if-exists, vendor/nubia/NX809J/NX809J-vendor.mk)
@@ -167,9 +207,10 @@ PRODUCT_COPY_FILES += \
 # firmware_pcf.mk is auto-generated; re-run closure.py to refresh.
 include $(LOCAL_PATH)/firmware_pcf.mk
 
-# Overlays
-PRODUCT_PACKAGES += \
-    FrameworksResNX809J
+# Overlays — see the desktop-mode block above. The framework-res overlay is now a
+# static PRODUCT_PACKAGE_OVERLAYS (baked into framework-res.apk in system), replacing
+# the former FrameworksResNX809J RRO, which was device_specific → /odm/overlay and so
+# never reached the device (we ship a stock-derived odm). Static overlay = reliable.
 
 # Partitions
 PRODUCT_BUILD_SUPER_PARTITION := true

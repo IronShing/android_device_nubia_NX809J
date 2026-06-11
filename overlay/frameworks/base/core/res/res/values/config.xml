@@ -36,4 +36,11 @@
     <!-- Battery (7500mAh) -->
     <integer name="config_criticalBatteryWarningLevel">5</integer>
     <integer name="config_lowBatteryWarningLevel">15</integer>
+
+    <!-- Desktop mode (Android 16 desktop windowing: external-display + on-device freeform).
+         Pairs with the enable_desktop_windowing_mode aconfig override (build/release/aconfig/bp4a)
+         and the freeform_window_management feature in device.mk. -->
+    <bool name="config_isDesktopModeSupported">true</bool>
+    <bool name="config_canInternalDisplayHostDesktops">true</bool>
+    <bool name="config_isDesktopModeDevOptionSupported">true</bool>
 </resources>
