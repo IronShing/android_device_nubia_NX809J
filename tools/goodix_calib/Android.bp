@@ -1,0 +1,33 @@
+// Debug-only helper to trigger the Goodix no-chart fingerprint calibration
+// via the vendor daemon's sendCommand. NOT shipped in the user ROM — built
+// on demand with `m goodix_calib` and pushed to /data/local/tmp for testing.
+cc_binary {
+    name: "goodix_calib",
+    srcs: ["goodix_calib.cpp"],
+    shared_libs: [
+        "libbinder_ndk",
+        "liblog",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    // System binder client: the IGoodixFingerprintDaemon instance is visible on
+    // /dev/binder (it appears in `service list`), so this is a plain system
+    // binary, not vendor. We push+run it from /data/local/tmp as root.
+}
+
+// Same as goodix_calib but registers an IGoodixFingerprintDaemonCallback first,
+// to capture the async notifyNoChartCaliAndPerformanceTest result struct.
+cc_binary {
+    name: "goodix_calib_cb",
+    srcs: ["goodix_calib_cb.cpp"],
+    shared_libs: [
+        "libbinder_ndk",
+        "liblog",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+}
