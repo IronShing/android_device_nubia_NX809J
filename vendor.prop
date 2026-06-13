@@ -18,6 +18,27 @@ vendor.display.disable_idle_time_hdr=1
 
 # Fingerprint
 persist.vendor.sensors.enable.udfps_sensor=true
+# UDFPS enroll/auth via the AOSP virtual-HAL-wrapped Goodix engine (ztecmdaidl).
+# Verified working combination (2026-06-13):
+#  - type=udfps: report UNDER_DISPLAY so SystemUI's UdfpsController drives the
+#    onTouch -> onFingerDown -> onPointerDown path. Must be a valid AOSP token;
+#    "udfps_optical"/"udfps_ultrasonic" parse as UNKNOWN -> not treated as UDFPS.
+#  - sensor_location is "x:y:r" in px (NOT "id:x:y:r"); from
+#    ro.vendor.feature.fingerprint_sensorui_position_center_{x,y,r}=608,2024,94.
+#    A 4-field value made the radius garbage so touches never registered on-sensor.
+#  - udfps.display_touch=false => SensorProps.halHandlesDisplayTouches=false, so
+#    FingerprintProvider.onPointerDown() forwards it to the HAL instead of
+#    early-returning (it drops onPointerDown when halHandlesDisplayTouches=true).
+#    THE core bug: the HAL only ever got onUiReady, never onPointerDown -> it idled
+#    and the enroll timed out (FINGERPRINT_ERROR:3).
+#  - udfps.control_illumination=true => the HAL's onPointerDownImpl fires
+#    fingerDownAction() (the real Goodix capture) on finger-down.
+# halHandlesDisplayTouches is read by the framework once at boot, so these must be
+# build-time props (a runtime setprop needs a reboot to take effect).
+persist.vendor.fingerprint.virtual.type=udfps
+persist.vendor.fingerprint.virtual.sensor_location=608:2024:94
+persist.vendor.fingerprint.virtual.udfps.control_illumination=true
+persist.vendor.fingerprint.virtual.udfps.display_touch=false
 
 # Graphics
 debug.sf.hw=1
