@@ -1,4 +1,4 @@
-service dt2w_uewake /system_ext/bin/dt2w_uewake
+service dt2w_uewake /odm/bin/dt2w_uewake
     class late_start
     user root
     group root system input

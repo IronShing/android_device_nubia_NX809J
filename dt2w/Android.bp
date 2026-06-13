@@ -5,5 +5,9 @@ cc_binary {
     shared_libs: ["liblog"],
     cflags: ["-Wall", "-Werror"],
     init_rc: ["dt2w_uewake.rc"],
-    system_ext_specific: true,
+    // odm, not system_ext: the daemon pokes /proc/touchscreen (vendor-labelled
+    // syna_proc) and /dev/uinput, which a coredomain cannot reference under
+    // enforcing SELinux. /vendor is the stock partition (not built here), so odm
+    // is the device-specific home — matching init.NX809J.rc (also on odm).
+    device_specific: true,
 }
