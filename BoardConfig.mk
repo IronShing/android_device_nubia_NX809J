@@ -274,18 +274,7 @@ VENDOR_SECURITY_PATCH := 2025-11-01
 
 # SELinux
 include device/qcom/sepolicy_vndr/SEPolicy.mk
-# Our device sepolicy belongs on odm, not vendor: the deployment model flashes
-# the LineageOS-built odm partition but keeps the STOCK vendor partition, so any
-# vendor-side policy we compile is discarded. ODM-targeting it at least puts the
-# policy on a partition we actually flash.
-#
-# NOTE: this grants NOTHING today — we boot androidboot.selinux=permissive — and
-# will not function under enforcing until (a) sysfs/proc nodes get genfs_contexts
-# (genfscon) labels; file_contexts entries for /sys and /proc are silently
-# ignored, so every `allow ... sysfs_fan/proc_micropump` rule is currently dead,
-# and (b) battery_record.te / vendordiag.te get real init_daemon_domain() /
-# domain_trans rules instead of bare type declarations.
-BOARD_ODM_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
+BOARD_VENDOR_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
 
 # Verified Boot
 BOARD_AVB_ENABLE := true
