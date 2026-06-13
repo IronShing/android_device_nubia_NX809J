@@ -274,7 +274,16 @@ VENDOR_SECURITY_PATCH := 2025-11-01
 
 # SELinux
 include device/qcom/sepolicy_vndr/SEPolicy.mk
-BOARD_VENDOR_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
+# Device policy targets ODM, not vendor: we flash the LineageOS-built odm
+# partition but keep the STOCK /vendor (no vendor.img is built), so anything
+# compiled into vendor_sepolicy.cil is discarded. ODM is the partition we ship.
+# (842228e tried this flip but bricked because the policy redefined a stock type
+# — vendordiag — and labelled /sys,/proc via file_contexts. Both fixed: that
+# duplicate type is removed and sysfs/proc are now genfscon. The policy is
+# self-contained — only plat + own types, no stock-vendor-private references —
+# so it links cleanly against the stock vendor policy. Still permissive globally;
+# the enforcing flip + on-device boot validation is a separate step.)
+BOARD_ODM_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
 
 # Verified Boot
 BOARD_AVB_ENABLE := true
