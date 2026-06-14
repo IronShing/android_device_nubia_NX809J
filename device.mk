@@ -333,3 +333,20 @@ PRODUCT_PACKAGES += \
 # is post-build investigation work, not blocking. Bypass is the documented
 # AOSP mechanism regardless.
 PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := false
+
+# Battery charging control -> Settings > Battery > Charging control.
+# The stock vendor charger holds the battery at 100%. Wire the LineageOS health
+# HAL's Toggle provider to the qcom-battery charge enable/disable node so the user
+# can cap the charge level from Settings. The framework shows the toggle whenever
+# the vendor.lineage.health IChargingControl service is declared (no extra gate).
+#
+# The HAL is built to ODM (it is patched device_specific in
+# hardware/lineage/interfaces/health/aidl/default — vendor:true -> device_specific
+# plus its .rc exec path /vendor -> /odm) because we ride the STOCK /vendor
+# partition and never flash a built vendor.img; odm is the partition we ship.
+PRODUCT_PACKAGES += \
+    vendor.lineage.health-service.default
+
+$(call soong_config_set,lineage_health,charging_control_charging_path,/sys/class/qcom-battery/charging_enabled)
+$(call soong_config_set,lineage_health,charging_control_charging_enabled,1)
+$(call soong_config_set,lineage_health,charging_control_charging_disabled,0)
