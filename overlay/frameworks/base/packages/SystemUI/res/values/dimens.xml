@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Copyright (C) 2026 The LineageOS Project
+     SPDX-License-Identifier: Apache-2.0
+-->
+<resources>
+    <!-- Microns per pixel for this panel, used by UdfpsOverlayInteractor to size the
+         lockscreen UDFPS icon: iconSize = udfps_icon_size(6000µm) / pixel_pitch.
+         AOSP's default is -1 (a "must override per device" sentinel). Left at -1,
+         iconSize goes negative and the foreground gets ~3094px of padding inside the
+         ~188px sensor view, collapsing the stroked ic_fingerprint vector into a white
+         rounded blob over the bg circle. This panel reports xDpi=428.97778, so
+         25400 / 428.97778 = 59.2 µm/px -> iconSize ≈ 101px, padding ≈ 43px. -->
+    <item name="pixel_pitch" format="float" type="dimen">59.2</item>
+</resources>
