@@ -54,6 +54,17 @@ on boot
     chmod 0664 /sys/class/leds/zte_vibrator/gain
     chmod 0664 /sys/class/leds/zte_vibrator/activate
 
+    # Battery charging control — let the LineageOS health HAL (runs as user
+    # system) write the qcom-battery charge enable/disable node, so
+    # Settings > Battery > Charging control can actually cap charging. The node
+    # is root-owned (-rw-r--r--) by default, so the HAL's write silently fails
+    # (the framework reports the limit set, but charging never stops) without
+    # this chown. The HAL is wired to charging_enabled (see device.mk soong cfg).
+    chown system system /sys/class/qcom-battery/charging_enabled
+    chmod 0664 /sys/class/qcom-battery/charging_enabled
+    chown system system /sys/class/qcom-battery/battery_charging_enabled
+    chmod 0664 /sys/class/qcom-battery/battery_charging_enabled
+
     # Magic Slider (gpio-keys_nubia, SW_PEN_INSERTED)
     # /dev/input/event1
     # Mode config: settings put system fourth_physical_key_function_value <MODE>
