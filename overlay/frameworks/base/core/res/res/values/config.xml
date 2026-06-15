@@ -31,8 +31,8 @@
     <!-- AOD doze brightness. AOSP default config_screenBrightnessDozeFloat=0.0
          (off) renders AOD nearly black. Set a dim-but-visible value; tune if the
          panel shows it too dark/bright. -->
-    <item name="config_screenBrightnessDozeFloat" format="float" type="dimen">0.1</item>
-    <integer name="config_screenBrightnessDoze">26</integer>
+    <item name="config_screenBrightnessDozeFloat" format="float" type="dimen">0.2</item>
+    <integer name="config_screenBrightnessDoze">51</integer>
 
     <!-- NFC -->
     <bool name="config_nfc_hw_capability">true</bool>
