@@ -64,6 +64,17 @@ PRODUCT_PRODUCT_PROPERTIES += \
     bluetooth.profile.opp.enabled=true \
     bluetooth.profile.sap.server.enabled=true
 
+# LE Audio (LC3) dynamic switcher. Dual-mode buds (e.g. Galaxy Buds 3 Pro) are
+# LE-Audio capable (BAP unicast client enabled, controller does ISO/CIS) but
+# stream classic A2DP because the dynamic A2DP<->LE-Audio switcher is gated on
+# this read-only prop, which is unset by default (per-device LE_AUDIO policy
+# stays forbidden without it). Enabling it surfaces the switcher (Settings /
+# Developer options) so dual-mode devices can use LE Audio. ro.bluetooth.* is
+# readable cross-partition, so product/etc/build.prop reaches the stock-vendor BT
+# stack (same cross-partition pattern as the DT2W default prop above).
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.bluetooth.leaudio_switcher.supported=true
+
 # IR remote: the HAL ships in the stock vendor (vendor.ir-default +
 # consumerir.zte.so). We ship only the consumerir feature permission so a
 # user-installed IR app works; the proprietary KooKong app is NOT bundled
