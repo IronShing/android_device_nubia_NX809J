@@ -28,6 +28,11 @@
     <string name="config_dozeComponent" translatable="false">com.android.systemui/com.android.systemui.doze.DozeService</string>
     <bool name="config_dozeAlwaysOnDisplayAvailable">true</bool>
     <bool name="config_dozeAlwaysOnEnabled">true</bool>
+    <!-- AOD doze brightness. AOSP default config_screenBrightnessDozeFloat=0.0
+         (off) renders AOD nearly black. Set a dim-but-visible value; tune if the
+         panel shows it too dark/bright. -->
+    <item name="config_screenBrightnessDozeFloat" format="float" type="dimen">0.1</item>
+    <integer name="config_screenBrightnessDoze">26</integer>
 
     <!-- NFC -->
     <bool name="config_nfc_hw_capability">true</bool>
