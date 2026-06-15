@@ -19,6 +19,16 @@
     <!-- Gestures: double-tap-to-wake (Synaptics TCM touch supports gesture wake) -->
     <bool name="config_supportDoubleTapWake">true</bool>
 
+    <!-- Doze / Always-On Display. The stock BOE rm692h5 panel supports AOD
+         (zte,aod_enabled in its DT) and the vendor.qti.hardware.display.ztedisp
+         HAL drives AOD backlight (updateAodBacklight). AOSP defaults leave
+         config_dozeComponent empty and config_dozeAlwaysOnDisplayAvailable=false,
+         so the doze_always_on setting does nothing. Wire the SystemUI doze
+         service and declare AOD available + on-by-default. -->
+    <string name="config_dozeComponent" translatable="false">com.android.systemui/com.android.systemui.doze.DozeService</string>
+    <bool name="config_dozeAlwaysOnDisplayAvailable">true</bool>
+    <bool name="config_dozeAlwaysOnEnabled">true</bool>
+
     <!-- NFC -->
     <bool name="config_nfc_hw_capability">true</bool>
 
