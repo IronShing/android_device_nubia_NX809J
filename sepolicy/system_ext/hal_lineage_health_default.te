@@ -1,0 +1,46 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# System-side (coredomain) domain for the LineageOS health HAL
+# (vendor.lineage.health-service.default = IChargingControl + IFastCharge,
+# i.e. the battery charge-limiter).
+#
+# Upstream Lineage ships this domain VENDOR-side
+# (device/lineage/sepolicy/common/vendor/hal_lineage_health_default.te, exec
+# type = vendor_file_type). On NX809J that policy is DISCARDED: this device
+# rides the stock ZTE /vendor partition and builds no vendor.img, so
+# BOARD_VENDOR_SEPOLICY_DIRS never reaches the device. The HAL was therefore
+# left with no domain -> ran in u:r:init:s0 (permissive only) and, under
+# enforcing, was denied execute_no_trans on its vendor_file exec and could not
+# even launch (charging control dead).
+#
+# Fix: home the HAL on /system_ext (a partition we build+flash) and give it a
+# coredomain here, shipped via SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS. Pattern mirrors
+# qcom's coredomain HAL server vendor_qccsyshal_qti (system_file_type exec).
+# Requires TARGET_USES_PREBUILT_VENDOR_SEPOLICY := true so the matching
+# common/dynamic rules (hal_lineage_health_service type, service_contexts,
+# client<->server binder_call) also route system-side instead of being
+# discarded vendor-side.
+
+type hal_lineage_health_default, domain, coredomain;
+type hal_lineage_health_default_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(hal_lineage_health_default)
+hal_server_domain(hal_lineage_health_default, hal_lineage_health)
+
+binder_call(hal_lineage_health_default, servicemanager)
+
+# Charging control writes /sys/class/qcom-battery/charging_enabled. The stock
+# vendor file_contexts labels the node (and its parent dir) sysfs_healthd — a
+# vendor type a coredomain cannot name. The health HAL's system_ext .rc relabels
+# just the FILE at boot to the plat type sysfs_batt_charge_control (see
+# sysfs_batt_charge_control.te + vendor.lineage.health-service.default.rc
+# restorecon); we grant write on that here. (DAC is handled separately:
+# init.NX809J.rc chowns the node to system.)
+allow hal_lineage_health_default sysfs_batt_charge_control:file rw_file_perms;
+# The parent dir /sys/class/qcom-battery is left as the stock vendor sysfs_healthd
+# (so vendor battery domains are undisturbed). Opening the file still needs search
+# on that dir; sysfs_healthd is not nameable system-side, so traverse via the
+# public sysfs_type attribute — search-only, the narrowest system-nameable handle
+# on a vendor-labeled dir. (verified: only this HAL touches charging_enabled.)
+allow hal_lineage_health_default sysfs_type:dir search;

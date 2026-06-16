@@ -1,0 +1,28 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# Plat-private sysfs type for the charge-limiter control node
+# /sys/class/qcom-battery/charging_enabled. The stock vendor policy genfs-labels
+# it sysfs_healthd (a bare vendor type that a coredomain can neither name nor
+# write), so the system_ext lineage health HAL — hal_lineage_health_default, a
+# coredomain — cannot be granted access to it directly (unknown-type build
+# error). Unlike procfs, sysfs supports runtime relabel (verified: chcon on this
+# node succeeds), so we relabel it to this plat type at boot via init restorecon
+# (see init.NX809J.rc) and grant the HAL write here.
+#
+# We use our own type (not sysfs_batteryinfo) because system/sepolicy
+# domain.te neverallows platform WRITE to sysfs_batteryinfo (read-only, via
+# hal_health_server). Charging control needs write.
+
+type sysfs_batt_charge_control, fs_type, sysfs_type;
+
+# init relabels the node from its stock vendor label (sysfs_healthd) to ours.
+# relabelfrom is expressed via the sysfs_type attribute because sysfs_healthd is
+# a vendor type not nameable in the plat compile context; sysfs_healthd carries
+# sysfs_type, so the attribute covers it. A blanket sysfs_type relabelfrom trips
+# domain.te's "restrict write access to etm sysfs interface" neverallow
+# (sysfs_devices_cs_etm:no_w_file_perms, with init NOT excepted), so we subtract
+# that protected type. init only ever relabels charging_enabled (the sole
+# more-specific system_ext file_contexts entry), so the unused breadth is moot.
+allow init sysfs_batt_charge_control:file relabelto;
+allow init { sysfs_type -sysfs_devices_cs_etm }:file relabelfrom;

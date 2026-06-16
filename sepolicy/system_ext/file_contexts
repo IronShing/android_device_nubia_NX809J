@@ -1,0 +1,17 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+
+# LineageOS health HAL (charge limiter), re-homed odm -> system_ext so it can be
+# labeled by system-side policy and domain-transition into a real coredomain
+# (hal_lineage_health_default) under enforcing. See hal_lineage_health_default.te.
+/system_ext/bin/hw/vendor\.lineage\.health-service\.default    u:object_r:hal_lineage_health_default_exec:s0
+
+# Double-tap-to-wake bridge daemon, re-homed odm -> system_ext to run in a clean
+# coredomain under enforcing (it does netlink + uinput only). See dt2w_uewake.te.
+/system_ext/bin/dt2w_uewake    u:object_r:dt2w_uewake_exec:s0
+
+# Charge-limiter control node. Relabeled (via init restorecon in init.NX809J.rc)
+# from the stock vendor sysfs_healthd to this plat type so the coredomain health
+# HAL can write it under enforcing. sysfs supports runtime relabel. See
+# sysfs_batt_charge_control.te + hal_lineage_health_default.te.
+/sys/class/qcom-battery/charging_enabled    u:object_r:sysfs_batt_charge_control:s0

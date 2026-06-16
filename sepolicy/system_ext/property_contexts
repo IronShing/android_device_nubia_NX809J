@@ -1,0 +1,7 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+
+# DT2W arm-request bridge: the dt2w_uewake coredomain daemon pulses this 0->1 to
+# ask the odm/vendor_init dt2w_uewake.rc action to write the vendor syna_proc
+# gesture node. dt2w_uewake sets it; init reads/triggers on it. See dt2w_uewake.te.
+sys.dt2w.arm    u:object_r:dt2w_prop:s0

@@ -62,6 +62,10 @@ on boot
     # this chown. The HAL is wired to charging_enabled (see device.mk soong cfg).
     chown system system /sys/class/qcom-battery/charging_enabled
     chmod 0664 /sys/class/qcom-battery/charging_enabled
+    # NOTE: the relabel of this node to the plat type sysfs_batt_charge_control
+    # is NOT done here — this .rc installs to /odm and runs in vendor_init, which
+    # cannot relabel TO a plat type. It is done from the health HAL's system_ext
+    # .rc (init domain). See vendor.lineage.health-service.default.rc.
     chown system system /sys/class/qcom-battery/battery_charging_enabled
     chmod 0664 /sys/class/qcom-battery/battery_charging_enabled
 

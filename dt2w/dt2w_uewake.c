@@ -8,17 +8,25 @@
 // through a uinput device (flagged WAKE via dt2w_uewake.kl) so the framework
 // wakes the display.
 //
-// RE-ARM REQUIREMENT (the bug this revision fixes): the Synaptics driver clears
-// the wake-gesture arm (tcm->ztec.is_wakeup_gesture) on every resume and refuses
-// the write while suspended. Arming once at boot therefore dies after the first
-// screen-on. So we must re-arm wake_gesture=1 on every screen-on, while awake.
-// We do that three ways for robustness:
+// ENFORCING-SELINUX SPLIT (this revision): the gesture node
+// /proc/touchscreen/wake_gesture is labelled "syna_proc", a VENDOR type that a
+// coredomain may neither name nor access, and whose genfs label is owned by the
+// stock vendor policy (so it cannot be relabelled without a bricking conflict).
+// We therefore run this daemon as a clean system_ext coredomain that touches
+// ONLY platform resources (netlink kobject uevents + /dev/uinput) and delegate
+// the actual node write to init: we toggle the property sys.dt2w.arm, and an
+// odm init action (vendor_init, which the stock vendor policy already allows to
+// write syna_proc) does "write /proc/touchscreen/wake_gesture 1". The daemon
+// never opens /proc/touchscreen at all.
+//
+// RE-ARM REQUIREMENT: the Synaptics driver clears the wake-gesture arm
+// (tcm->ztec.is_wakeup_gesture) on every resume and refuses the write while
+// suspended. Arming once at boot therefore dies after the first screen-on. So we
+// request a re-arm on every screen-on, while awake:
 //   1) on the driver's screen-on/lcd-on uevent (event-driven, primary),
 //   2) right after we inject a DT2W wake (the screen is about to come on),
-//   3) a conditional poll-timeout safety net (read first; only write if the
-//      driver has cleared it) in case the screen-on uevent token differs.
-// The daemon is frozen by the suspend freezer, so the timeout only fires while
-// awake — exactly when re-arming is permitted.
+//   3) a poll-timeout safety net (the daemon is suspend-frozen, so the timeout
+//      only fires while awake — exactly when re-arming is permitted).
 //
 // Gated on the LineageOS DT2W setting via persist.sys.dt2w.enabled (the init
 // service starts/stops this daemon and clears wake_gesture when disabled).
@@ -33,42 +41,30 @@
 #include <linux/input.h>
 #include <linux/uinput.h>
 #include <sys/socket.h>
+#include <sys/system_properties.h>
 #include <sys/types.h>
 
 #define LOG_TAG "dt2w_uewake"
 #include <log/log.h>
 
-static const char *WAKE_GESTURE_NODE = "/proc/touchscreen/wake_gesture";
-
 // Re-arm safety-net interval. The screen-on uevent is the primary re-arm; this
-// only fires while awake and only writes when the node has actually been cleared,
-// so it adds negligible churn.
+// only fires while awake, so it adds negligible churn.
 #define REARM_TIMEOUT_MS 8000
 
-static int write_node(const char *path, const char *val) {
-    int fd = open(path, O_WRONLY | O_CLOEXEC);
-    if (fd < 0) return -1;
-    ssize_t n = write(fd, val, strlen(val));
-    close(fd);
-    return (n < 0) ? -1 : 0;
-}
-
-// Returns 1 if wake_gesture is armed, 0 if cleared, -1 on error.
-static int read_armed(void) {
-    int fd = open(WAKE_GESTURE_NODE, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) return -1;
-    char b[8] = {0};
-    ssize_t n = read(fd, b, sizeof(b) - 1);
-    close(fd);
-    if (n <= 0) return -1;
-    return (b[0] == '1') ? 1 : 0;
-}
+// Property bridge to init. The daemon (coredomain) cannot write the vendor
+// syna_proc gesture node, so it asks init to: an odm action triggers on
+// sys.dt2w.arm=1 and writes /proc/touchscreen/wake_gesture 1. We pulse 0 -> 1 so
+// the 0->1 transition re-fires the init trigger on every request.
+static const char *ARM_PROP = "sys.dt2w.arm";
 
 static void arm_gesture(const char *why) {
-    if (write_node(WAKE_GESTURE_NODE, "1") == 0)
-        ALOGI("armed wake_gesture=1 (%s)", why);
+    // Pulse low then high so the init property trigger re-fires each time, even
+    // if it was already "1" from a previous request.
+    __system_property_set(ARM_PROP, "0");
+    if (__system_property_set(ARM_PROP, "1") == 0)
+        ALOGI("requested wake_gesture arm via %s=1 (%s)", ARM_PROP, why);
     else
-        ALOGE("arm wake_gesture failed (%s): %s", why, strerror(errno));
+        ALOGE("set %s failed (%s)", ARM_PROP, why);
 }
 
 // --- uinput KEY_WAKEUP injector -------------------------------------------
@@ -171,8 +167,9 @@ int main(void) {
             continue;
         }
         if (pr == 0) {
-            // Safety net (only runs while awake): re-arm if the driver cleared it.
-            if (read_armed() == 0) arm_gesture("rearm-timeout");
+            // Safety net (only runs while awake): re-arm. The init action is a
+            // plain write, so an unconditional request is cheap and idempotent.
+            arm_gesture("rearm-timeout");
             continue;
         }
         if (!(pfd.revents & POLLIN)) continue;

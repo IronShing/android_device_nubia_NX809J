@@ -1,13 +1,33 @@
 // NX809J double-tap-to-wake uevent->KEY_WAKEUP bridge
+//
+// ENFORCING-SELINUX split. The daemon binary lives on /system_ext and runs in a
+// clean coredomain (dt2w_uewake) doing ONLY netlink + uinput. It never pokes
+// /proc/touchscreen (vendor-labelled syna_proc, which a coredomain cannot name
+// or access). Instead it pulses the property sys.dt2w.arm, and a vendor_init
+// action does the real write. The .rc is SPLIT across two partitions:
+//   - dt2w_uewake.rc  -> /system_ext (init_rc below): the SERVICE block + the
+//     start/stop triggers. Must be system_ext so init's coredomain
+//     type_transition (init -> dt2w_uewake on dt2w_uewake_exec) fires; declaring
+//     the service from an /odm (vendor_init) .rc left it stuck in u:r:init:s0.
+//   - dt2w_uewake_arm.rc -> /odm (prebuilt_etc below): ONLY the syna_proc write
+//     actions, which must run in vendor_init.
+// When this lands, BOTH system_ext and odm must be flashed (the odm reflash
+// removes the stale old service block + old /odm/bin/dt2w_uewake binary).
 cc_binary {
     name: "dt2w_uewake",
     srcs: ["dt2w_uewake.c"],
     shared_libs: ["liblog"],
     cflags: ["-Wall", "-Werror"],
     init_rc: ["dt2w_uewake.rc"],
-    // odm, not system_ext: the daemon pokes /proc/touchscreen (vendor-labelled
-    // syna_proc) and /dev/uinput, which a coredomain cannot reference under
-    // enforcing SELinux. /vendor is the stock partition (not built here), so odm
-    // is the device-specific home — matching init.NX809J.rc (also on odm).
+    system_ext_specific: true,
+}
+
+// Arming actions kept on /odm (vendor_init context) so their write actions may
+// touch the vendor syna_proc gesture node. No service block here (that lives on
+// system_ext so the coredomain transition fires).
+prebuilt_etc {
+    name: "dt2w_uewake_arm.rc",
+    src: "dt2w_uewake_arm.rc",
+    sub_dir: "init",
     device_specific: true,
 }

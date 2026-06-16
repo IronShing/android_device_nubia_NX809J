@@ -1,0 +1,46 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# System-side (coredomain) domain for the double-tap-to-wake bridge daemon
+# (/system_ext/bin/dt2w_uewake). It does ONLY platform work: listen for the
+# touch driver's kobject uevents (double_tap / screen-on) and inject KEY_WAKEUP
+# through /dev/uinput. It deliberately does NOT touch /proc/touchscreen/*
+# (vendor type syna_proc, which a coredomain can neither name nor access and
+# whose genfs label is owned by the stock vendor policy). Arming the gesture node
+# is delegated to an odm/vendor_init action (dt2w_uewake.rc) that triggers on the
+# sys.dt2w.arm property this daemon pulses.
+#
+# Coredomain uinput precedent: virtual_touchpad / bluetooth / system_server all
+# create uinput devices the same way.
+
+type dt2w_uewake, domain, coredomain;
+type dt2w_uewake_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(dt2w_uewake)
+
+# Listen for the driver's "double_tap=true" and screen-on/lcd-on kobject uevents.
+# CAP_NET_ADMIN is needed to join the netlink multicast group and to use
+# SO_RCVBUFFORCE (granted to the system-uid service via dt2w_uewake.rc).
+allow dt2w_uewake self:netlink_kobject_uevent_socket { create bind read getopt setopt };
+allow dt2w_uewake self:capability net_admin;
+
+# Inject KEY_WAKEUP through a virtual uinput device. The daemon writes events via
+# the /dev/uinput control fd (uhid_device); the kernel creates /dev/input/eventN
+# (input_device) which the framework's InputReader reads — the daemon never opens
+# that node itself, so no input_device access is needed here.
+allow dt2w_uewake uhid_device:chr_file { open read write ioctl };
+
+# Request a re-arm: pulse sys.dt2w.arm 0->1. The odm dt2w_uewake.rc action does
+# the actual write to the vendor syna_proc gesture node in vendor_init.
+#
+# A bare property_type trips enforce_sysprop_owner (every property must carry a
+# system/product/vendor owner attribute). Use system_internal_prop: this is a
+# system-owned property and all of its file accessors are coredomain
+# (dt2w_uewake sets+reads it, init evaluates the property triggers, dumpstate
+# dumps it). The odm dt2w_uewake.rc only TRIGGERS on it — trigger evaluation is
+# done by init (coredomain), and vendor_init merely runs the resulting `write`
+# builtin, so vendor_init never reads dt2w_prop as a file. (It must NOT be a
+# vendor_property_type: coredomain setting a vendor prop trips
+# compatible_property_only.)
+system_internal_prop(dt2w_prop)
+set_prop(dt2w_uewake, dt2w_prop)

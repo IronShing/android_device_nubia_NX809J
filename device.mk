@@ -123,7 +123,15 @@ PRODUCT_COPY_FILES += \
 # Gated on persist.sys.dt2w.enabled, defaulted ON via PRODUCT_PRODUCT_PROPERTIES
 # above (daemon auto-starts at boot). To disable (save standby battery):
 # setprop persist.sys.dt2w.enabled 0 (persists; disarms wake_gesture too).
-PRODUCT_PACKAGES += dt2w_uewake
+# ENFORCING split: dt2w_uewake binary -> /system_ext coredomain (netlink+uinput
+# only); its SERVICE block ships in dt2w_uewake.rc (the binary's init_rc, also
+# /system_ext) so init's coredomain type_transition fires. The syna_proc gesture-
+# node writes live in dt2w_uewake_arm.rc -> /odm (vendor_init). The daemon pulses
+# sys.dt2w.arm to request the arm. (Binary's init_rc auto-installs dt2w_uewake.rc,
+# so only the binary + the odm arm .rc need listing here.)
+PRODUCT_PACKAGES += \
+    dt2w_uewake \
+    dt2w_uewake_arm.rc
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/dt2w/dt2w_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/dt2w_uewake.kl
 

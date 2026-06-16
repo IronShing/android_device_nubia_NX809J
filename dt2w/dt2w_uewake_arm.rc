@@ -1,0 +1,21 @@
+# dt2w_uewake — gesture-node arming actions (vendor_init half).
+#
+# Installed to /odm so these builtin `write` actions run in the vendor_init
+# domain, which the stock vendor policy already allows to write the vendor-
+# labelled (syna_proc) node /proc/touchscreen/wake_gesture. The coredomain
+# daemon (service block in dt2w_uewake.rc on /system_ext) cannot touch syna_proc,
+# so it pulses sys.dt2w.arm 0->1 and the action below does the real write on each
+# 0->1 transition. The disable path also clears the arm here (vendor_init).
+#
+# NOTE: this file carries NO `service` block — the service is declared on
+# /system_ext so init's coredomain transition fires. Keeping a service block here
+# would (a) leave the daemon in u:r:init:s0 and (b) collide with the system_ext
+# definition. When this lands, BOTH odm and system_ext must be flashed (the old
+# odm .rc + old /odm/bin/dt2w_uewake binary must be removed).
+
+on property:persist.sys.dt2w.enabled=0
+    write /proc/touchscreen/wake_gesture 0
+
+# Daemon-requested re-arm (vendor_init writes the vendor syna_proc node).
+on property:sys.dt2w.arm=1
+    write /proc/touchscreen/wake_gesture 1

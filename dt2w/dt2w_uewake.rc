@@ -1,7 +1,24 @@
-service dt2w_uewake /odm/bin/dt2w_uewake
+# dt2w_uewake — double-tap-to-wake bridge (service block).
+#
+# This .rc installs to /system_ext (alongside the binary) so its actions run in
+# the init (plat) coredomain. That matters for the SERVICE block: init's
+# type_transition init:dt2w_uewake_exec -> dt2w_uewake (from init_daemon_domain,
+# a plat rule) only fires when init starts the service from a coredomain context.
+# Declaring the service from an /odm (vendor_init) .rc left the daemon stuck in
+# u:r:init:s0 (no transition) — broken under enforcing.
+#
+# The daemon is a clean coredomain doing only netlink + uinput; it never touches
+# /proc/touchscreen (vendor syna_proc). Arming that node is delegated to
+# vendor_init via the property bridge sys.dt2w.arm — see dt2w_uewake_arm.rc on
+# /odm, which carries the (vendor_init-only) syna_proc writes.
+
+service dt2w_uewake /system_ext/bin/dt2w_uewake
     class late_start
-    user root
-    group root system input
+    user system
+    # uhid group: open /dev/uinput (crw-rw---- uhid uhid) without running as root.
+    group system input uhid
+    # CAP_NET_ADMIN: bind the NETLINK_KOBJECT_UEVENT multicast group + SO_RCVBUFFORCE.
+    capabilities NET_ADMIN
     disabled
 
 on property:persist.sys.dt2w.enabled=1
@@ -9,7 +26,6 @@ on property:persist.sys.dt2w.enabled=1
 
 on property:persist.sys.dt2w.enabled=0
     stop dt2w_uewake
-    write /proc/touchscreen/wake_gesture 0
 
 on property:sys.boot_completed=1 && property:persist.sys.dt2w.enabled=1
     start dt2w_uewake

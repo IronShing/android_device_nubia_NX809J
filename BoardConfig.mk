@@ -273,8 +273,34 @@ TARGET_RECOVERY_PIXEL_FORMAT := RGBX_8888
 VENDOR_SECURITY_PATCH := 2025-11-01
 
 # SELinux
+# This device rides the STOCK ZTE /vendor partition and builds no vendor.img, so
+# vendor-side sepolicy (BOARD_VENDOR_SEPOLICY_DIRS) never reaches the device.
+# TARGET_USES_PREBUILT_VENDOR_SEPOLICY routes LineageOS's HAL "dynamic" policy
+# (device/lineage/sepolicy/common/dynamic: hal_lineage_health_service type,
+# service_contexts, client<->server binder) to SYSTEM_EXT instead of the
+# discarded vendor side, and stops common/vendor from compiling (which also
+# avoids duplicate-type clashes with the system-side health domain below).
+# Without this, the lineage health/charge-limiter HAL has no domain and cannot
+# launch under enforcing. NOTE (build/RE): validate interaction with the qcom
+# SEPolicy.mk include — this flag changes how vendor sepolicy is assembled.
+TARGET_USES_PREBUILT_VENDOR_SEPOLICY := true
 include device/qcom/sepolicy_vndr/SEPolicy.mk
 BOARD_VENDOR_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy
+# System-side coredomain for the re-homed (/system_ext) lineage health HAL.
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += $(DEVICE_PATH)/sepolicy/system_ext
+
+# Drop device/lineage/sepolicy/qcom/dynamic from the system_ext policy. Flipping
+# TARGET_USES_PREBUILT_VENDOR_SEPOLICY routes qcom/sepolicy.mk's "dynamic" dir
+# system-side, but that dir (dontaudit.te, hal_lineage_livedisplay_qti*) refers
+# to QCOM VENDOR types (adsprpcd_file, ...) that live only in
+# BOARD_VENDOR_SEPOLICY_DIRS -> "unknown type" at checkpolicy. We only need the
+# COMMON dynamic dir (hal_lineage_health_service + service_contexts) system-side;
+# qcom/dynamic (LiveDisplay-QTI) was already discarded vendor-side on this
+# stock-/vendor device, so excluding it is status-quo, not a regression. It was
+# added during the SEPolicy.mk include above; common/dynamic is added later by
+# build/make/core/config.mk and is left intact.
+SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS := \
+    $(filter-out device/lineage/sepolicy/qcom/dynamic,$(SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS))
 
 # Verified Boot
 BOARD_AVB_ENABLE := true
