@@ -112,13 +112,17 @@ BOARD_KERNEL_CMDLINE := \
     nosoftlockup \
     console=ttynull \
     qcom_geni_serial.con_enabled=0
-# SELinux ENFORCING (beta gate, 2026-06-16). Removing androidboot.selinux=permissive
-# makes the device boot enforcing by default. Both prior blockers are closed and
-# validated live under setenforce 1: the lineage charging HAL + dt2w_uewake run in
-# their own system_ext coredomains with zero denials, and AOD+DT2W work together.
-# Boot-time denials were all benign under permissive (flags_health_check aconfig
-# oneshot, init netlink self-read). To temporarily revert for diagnosis, restore:
-#   BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
+# SELinux: PERMISSIVE (required). The flip to enforcing was built+flit 2026-06-16
+# and BROKE CELLULAR: the stock ZTE vendor daemon `qmipriod` crash-loops under
+# enforcing (denied search on its own /data/vendor/qmipriod = vendor_qmipriod_data_file),
+# which prevents SIM detection (gsm.sim.state -> ABSENT, no service). Confirmed both
+# ways: setenforce 0 -> SIM LOADED + IN_SERVICE; enforcing -> ABSENT. The missing
+# rule is a vendor->vendor allow we CANNOT ship (vendor sepolicy is discarded on this
+# stock-vendor-ride device; an odm cil bricks per odm_sepolicy_enforcing). So the
+# device must boot permissive. The lineage charging-HAL + dt2w_uewake system_ext
+# coredomains (validated enforcing-clean) STAY in the tree — they're correct and
+# enforcing-ready; only this vendor qmipriod gap blocks a global enforcing flip.
+BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
 BOARD_BOOTCONFIG := \
     androidboot.hardware=qcom \
     androidboot.memcg=1 \
