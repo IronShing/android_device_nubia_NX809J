@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Copyright (C) 2026 The LineageOS Project
+     SPDX-License-Identifier: Apache-2.0
+-->
+<resources>
+    <!-- MmTel ImsService package the framework's ImsResolver binds for VoLTE/VT.
+         Default is empty -> no ImsService -> IMS never registers -> no call audio
+         on this VoLTE-only network. Point it at the grafted QTI ImsService
+         (org.codeaurora.ims, confirmed via aapt2; installed by ims.mk to
+         /system_ext/priv-app/ims). See volte_call_audio_2026-06-16. -->
+    <string name="config_ims_mmtel_package" translatable="false">org.codeaurora.ims</string>
+</resources>

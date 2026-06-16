@@ -90,6 +90,12 @@ PRODUCT_PRODUCT_PROPERTIES += \
     persist.dbg.vt_avail_ovr=1 \
     persist.dbg.wfc_avail_ovr=1
 
+# QTI IMS / VoLTE framework stack (the org.codeaurora.ims ImsService + QTI
+# telephony jars + apps, grafted from the EA stock dump). The props above are
+# necessary-but-insufficient prereqs — without an ImsService the framework has
+# nothing to bind. See ims.mk + volte_call_audio_2026-06-16.
+include $(LOCAL_PATH)/ims.mk
+
 # IR remote: the HAL ships in the stock vendor (vendor.ir-default +
 # consumerir.zte.so). We ship only the consumerir feature permission so a
 # user-installed IR app works; the proprietary KooKong app is NOT bundled

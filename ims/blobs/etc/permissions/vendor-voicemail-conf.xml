@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voicemail>
+<!--
+    This is a list for operator specific default voicemail numbers.
+    For those EF_MBDN(3G) and EF_MN(CPHS) are both empty case,
+    We will use below voicemail number for instead if numeric is matched.
+
+    Please also be noted, below numbers are not modifiable once anyone
+    of those is used as default VM number.
+
+    Format is listed as below:
+    <voicemail
+        numeric="MCC+MNC"
+        carrier="Operator Name"
+        vmnumber="Voicemail Number"
+        gid1="SIM card GID1"
+        spn="Operator SPN"
+        vmtag="Tag for Voicemail" />
+-->
+    <voicemail numeric="20205" carrier="Vodafone" vmnumber="121" vmtag=""/>
+    <voicemail numeric="20404" carrier="vodafone NL" vmnumber="+31654501233" vmtag=""/>
+    <voicemail numeric="20416" carrier="TMO NL" vmnumber="+31624001233" vmtag=""/>
+    <voicemail numeric="20601" carrier="PROXMUS" vmnumber="+32475151969" vmtag=""/>
+    <voicemail numeric="20620" carrier="BASE" vmnumber="+32486191933" vmtag=""/>
+    <voicemail numeric="20801" carrier="Orange FRA" vmnumber="888" vmtag=""/>
+    <voicemail numeric="20801" carrier="Virgin" vmnumber="888" vmtag=""/>
+    <voicemail numeric="20801" carrier="Tele2" vmnumber="888" vmtag=""/>
+    <voicemail numeric="20801" carrier="Carrefour" vmnumber="888" vmtag=""/>
+    <voicemail numeric="20801" carrier="NRJ (ORANGE)" vmnumber="888" vmtag=""/>
+    <voicemail numeric="20801" carrier="Orange" vmnumber="888" vmtag=""/>
+    <voicemail numeric="20810" carrier="NRJ (SFR)" vmnumber="123" vmtag=""/>
+    <voicemail numeric="20810" carrier="Auchan" vmnumber="123" vmtag=""/>
+    <voicemail numeric="20810" carrier="Debitel" vmnumber="123" vmtag="" />
+    <voicemail numeric="20810" carrier="Leclerc" vmnumber="123" vmtag=""/>
+    <voicemail numeric="20810" carrier="SFR" vmnumber="123" vmtag=""/>
+    <voicemail numeric="20811" carrier="SFR (France)" vmnumber="123" vmtag=""/>
+    <voicemail numeric="20820" carrier="Bouygues Telecom" vmnumber="+33660660001" vmtag=""/>
+    <voicemail numeric="21401" vmnumber="22177"/>
+    <voicemail numeric="21401" vmnumber="22177" spn="vodafone ES"/>
+    <voicemail numeric="21403" vmnumber="242" spn="Orange"/>
+    <voicemail numeric="21403" vmnumber="1222" spn="JAZZTEL"/>
+    <voicemail numeric="21403" vmnumber="1213" spn="simyo"/>
+    <voicemail numeric="21403" vmnumber="2242" spn="EUSKALTEL"/>
+    <voicemail numeric="21403" vmnumber="242" spn="MASMovil"/>
+    <voicemail numeric="21403" vmnumber="242" spn="amena"/>
+    <voicemail numeric="21403" vmnumber="277" spn="mobilR"/>
+    <voicemail numeric="21403" vmnumber="242" spn="Carrefour"/>
+    <voicemail numeric="21403" vmnumber="242" spn="Happy"/>
+    <voicemail numeric="21403" vmnumber="242" spn="CABLE movil"/>
+    <voicemail numeric="21403" vmnumber="242" spn="Ibercom"/>
+    <voicemail numeric="21403" vmnumber="242" spn="MovilDIA"/>
+    <voicemail numeric="21403" vmnumber="242" spn="LCR"/>
+    <voicemail numeric="21403" vmnumber="242" spn="LlamaYA"/>
+    <voicemail numeric="21403" vmnumber="242" spn="YOU Mobile"/>
+    <voicemail numeric="21403" vmnumber="242" spn="IOS"/>
+    <voicemail numeric="21403" vmnumber="242" spn="REPUBLICA MOVIL"/>
+    <voicemail numeric="21403" vmnumber="2242" spn="RACC"/>
+    <voicemail numeric="21403" vmnumber="242" spn="oceans"/>
+    <voicemail numeric="21404" vmnumber="+34633633633"/>
+    <voicemail numeric="21404" vmnumber="+34633633633" spn="Yoigo"/>
+    <voicemail numeric="21404" vmnumber="+34633633633" spn="MASMovil"/>
+    <voicemail numeric="21404" vmnumber="+34633633633" spn="pepephone"/>
+    <voicemail numeric="21404" vmnumber="333" spn="telecable"/>
+    <voicemail numeric="21404" vmnumber="121" imsi="2140426"/>
+    <voicemail numeric="21404" vmnumber="121" spn="Lycamobile"/>
+    <voicemail numeric="21405" vmnumber="333" spn="telecable"/>
+    <voicemail numeric="21405" vmnumber="22177" spn="pepephone"/>
+    <voicemail numeric="21406" vmnumber="22177" spn="Eroski Movil"/>
+    <voicemail numeric="21406" vmnumber="22177" spn="pepephone"/>
+    <voicemail numeric="21406" vmnumber="22177" spn="Lebara"/>
+    <voicemail numeric="21406" vmnumber="333" spn="telecable"/>
+    <voicemail numeric="21406" vmnumber="22277" spn="mobilR"/>
+    <voicemail numeric="21406" vmnumber="2211" spn="Lowi"/>
+    <voicemail numeric="21407" vmnumber="22123"/>
+    <voicemail numeric="21407" vmnumber="22123" spn="Movistar"/>
+    <voicemail numeric="21407" vmnumber="1222" spn="JAZZTEL"/>
+    <voicemail numeric="21408" vmnumber="2242" spn="EUSKALTEL"/>
+    <voicemail numeric="21416" vmnumber="333" spn="telecable"/>
+    <voicemail numeric="21417" vmnumber="277" spn="mobilR"/>
+    <voicemail numeric="21419" vmnumber="1213" spn="simyo"/>
+    <voicemail numeric="21421" vmnumber="1222" spn="JAZZTEL"/>
+    <voicemail numeric="21432" vmnumber="22123" spn="Tuenti"/>
+    <voicemail numeric="21425" vmnumber="121" spn="Lycamobile"/>
+    <voicemail numeric="21422" vmnumber="1210" spn="Digi.Mobil"/>
+    <voicemail numeric="21422" vmnumber="1210" spn="digimobil"/>
+    <voicemail numeric="21407" carrier="Movistar" vmnumber="22123" vmtag="Buzón Movistar"/>
+    <voicemail numeric="21401" carrier="vodafone ES" vmnumber="22177" vmtag=""/>
+    <voicemail numeric="21601" carrier="Telenor" vmnumber="+36209400404" vmtag=""/>
+    <voicemail numeric="21630" carrier="TMOBILE" vmnumber="+36309888444" vmtag=""/>
+    <voicemail numeric="21630" carrier="T-Mobile H" vmnumber="+36309888444" vmtag=""/>
+    <voicemail numeric="21670" carrier="vodafone" vmnumber="170" vmtag=""/>
+    <voicemail numeric="21890" carrier="Telecom" vmnumber="+38761123123" vmtag=""/>
+    <voicemail numeric="21805" carrier="MTEL" vmnumber="+3876555400" vmtag=""/>
+    <voicemail numeric="21901" carrier="T-Mobile" vmnumber="+385981511" vmtag=""/>
+    <voicemail numeric="21910" carrier="VIP" vmnumber="+385917000" vmtag=""/>
+    <voicemail numeric="22005" carrier="P772N10_VIP" vmnumber="+381607777" vmtag=""/>
+    <voicemail numeric="22210" carrier="Postemobile" vmnumber="" spn="Post mobile"/>
+    <voicemail numeric="22210" carrier="vodafone IT" vmnumber="42020" vmtag=""/>
+    <voicemail numeric="22601" carrier="VDF Ro" vmnumber="+40722033334" vmtag=""/>
+    <voicemail numeric="22801" carrier="Swisscom (Switzerland)" vmnumber="+41794997979" vmtag=""/>
+    <voicemail numeric="23002" vmnumber="+420602999999" spn="O2-CZ"/>
+    <voicemail numeric="23003" carrier="Vodafone CZ" vmnumber="+420608989898" vmtag=""/>
+    <voicemail numeric="23001" carrier="TMO CZ" vmnumber="+420603123311" vmtag=""/>
+    <voicemail numeric="23101" carrier="Orange" vmnumber="555" vmtag=""/>
+    <voicemail numeric="23201" carrier="Mobilkom (Austria)" vmnumber="66477" vmtag=""/>
+    <voicemail numeric="23203" carrier="TMO AT" vmnumber="+436762200" vmtag=""/>
+    <voicemail numeric="23207" carrier="0677 web" imsi="2320776" vmnumber="+436776000" vmtag=""/>
+    <voicemail numeric="23207" carrier="0677 web" imsi="23207799" vmnumber="+436776000" vmtag=""/>
+    <voicemail numeric="23207" carrier="0677 web" imsi="23207718" vmnumber="+436776000" vmtag=""/>
+    <voicemail numeric="23415" carrier="vodafone UK" vmnumber="121" vmtag=""/>
+    <voicemail numeric="23420" carrier="H3G" vmnumber="+447782333123" vmtag="" />
+    <voicemail numeric="23433" carrier="OUK" vmnumber="+44 7973100123" vmtag=""/>
+    <voicemail numeric="23433" carrier="Orange" vmnumber="+447973100123" vmtag=""/>
+    <voicemail numeric="23486" carrier="OUK" vmnumber="+44 7973100123" vmtag=""/>
+    <voicemail numeric="24008" carrier="telenor" vmnumber="888" vmtag="" />
+    <voicemail numeric="25001" carrier="MTS RUS" vmnumber="0861" vmtag=""/>
+    <voicemail numeric="25501" carrier="Vodafone" vmnumber="+380501200000" vmtag=""/>
+    <voicemail numeric="25704" carrier="Life" vmnumber="985" vmtag=""/>
+    <voicemail numeric="25701" carrier="Velcom" vmnumber="+375296000441" vmtag="Voicemail"/>
+    <voicemail numeric="25901" carrier="OMD" vmnumber="555" vmtag=""/>
+    <voicemail numeric="26003" carrier="OPL" vmnumber="*501" vmtag="" />
+    <voicemail numeric="26001" carrier="Plus Internet" vmnumber="+48601222222" vmtag="" />
+    <voicemail numeric="26201" carrier="TMO DE" vmnumber="+491712523311" vmtag=""/>
+    <voicemail numeric="26201" carrier="Telekom" vmnumber="3311" vmtag=""/>
+    <voicemail numeric="26202" carrier="Vodafone.de" vmnumber="5500" vmtag=""/>
+    <voicemail numeric="26202" carrier="VF-DE" vmnumber="5500" vmtag=""/>
+    <voicemail numeric="26203" carrier="E-plus" vmnumber="+491779911" vmtag=""/>
+    <voicemail numeric="26204" carrier="Vodafone.de" vmnumber="5500" vmtag=""/>
+    <voicemail numeric="26209" carrier="Vodafone.de" vmnumber="5500" vmtag=""/>
+    <voicemail numeric="26207" carrier="o2" vmnumber="+491793000333" vmtag=""/>
+    <voicemail numeric="26303" carrier="E-Plus" vmnumber="+491779911" vmtag=""/>
+    <voicemail numeric="26801" carrier="Vodafone" vmnumber="123" vmtag=""/>
+    <voicemail numeric="26803" carrier="Optimus" vmnumber="133" vmtag=""/>
+    <voicemail numeric="26806" carrier="TMN" vmnumber="+351962000000" vmtag=""/>
+    <voicemail numeric="26889" carrier="Vodafone" vmnumber="123" vmtag=""/>
+    <voicemail numeric="27201" carrier="vodafone IE" vmnumber="171" vmtag=""/>
+    <voicemail numeric="27402" carrier="vodafone IS" vmnumber="1415" vmtag="" />
+    <voicemail numeric="27602" carrier="vodafone" vmnumber="135" vmtag=""/>
+    <voicemail numeric="27801" carrier="Vodafone Malta" vmnumber="0035699909909" vmtag=""/>
+    <voicemail numeric="28601" carrier="Turkcell" vmnumber="7532" vmtag=""/>
+    <voicemail numeric="28602" carrier="Vodafone TR" vmnumber="+905427542000" vmtag="" />
+    <voicemail numeric="29340" carrier="websi" imsi="293400130" vmnumber="+38669699690" vmtag=""/>
+
+    <voicemail numeric="310260" gid1="DEFF" carrier="TF-TMO" vmnumber="+18056377243" vmtag=""/>
+    <voicemail numeric="310260" gid1="534D" carrier="TF-SimpleMobile" vmnumber="+18056377243" vmtag=""/>
+    <voicemail numeric="310260" carrier="TF-TMO/SimpleMobile" vmnumber="+18056377243" vmtag=""/>
+    <voicemail numeric="311480" carrier="VZW" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="330110" gid1="DEFF" carrier="TF-Claro" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="330110" carrier="TF-Claro" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="33403" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="334030" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="33430" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="33405" carrier="ATT" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="334050" carrier="ATT" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="334090" carrier="ATT" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="334070" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="334020" carrier="Telcel" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="334140" carrier="Altan" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="37002" carrier="Claro" vmnumber="*99" vmtag=""/>
+
+    <voicemail numeric="42702" carrier="Vodafone Qatar" vmnumber="121" vmtag=""/>
+    <voicemail numeric="42702" carrier="VF-QT" vmnumber="121" vmtag=""/>
+    <voicemail numeric="44004" carrier="SoftBank" vmnumber="1416" vmtag=""/>
+    <voicemail numeric="44006" carrier="SoftBank" vmnumber="1416" vmtag=""/>
+    <voicemail numeric="44020" carrier="SoftBank" vmnumber="1416" vmtag=""/>
+    <voicemail numeric="46689" carrier="VIBO" vmnumber="+886986000777" vmtag=""/>
+    <voicemail numeric="46697" carrier="TW Mobile" vmnumber="123" vmtag=""/>
+
+    <voicemail numeric="50501" carrier="Telstra" vmnumber="+61101" vmtag="MessageBank"/>
+    <voicemail numeric="50502" carrier="Optus" vmnumber="+61411000321" vmtag=""/>
+    <voicemail numeric="50503" carrier="VodafoneAU" vmnumber="121" vmtag=""/>
+    <voicemail numeric="50506" carrier="Hutch" vmnumber="+61430005333" vmtag=""/>
+    <voicemail numeric="50571" carrier="Telstra" vmnumber="+61101" vmtag="MessageBank"/>
+    <voicemail numeric="50572" carrier="Telstra" vmnumber="+61101" vmtag="MessageBank"/>
+    <voicemail numeric="51503" carrier="SMART" vmnumber="100" vmtag=""/>
+    <voicemail numeric="53001" carrier="VodafoneNZ" vmnumber="+6421700700" vmtag=""/>
+    <voicemail numeric="53005" carrier="TelecomNZ" vmnumber="+6483083210" vmtag=""/>
+
+    <voicemail numeric="62002" carrier="vodafone GH" vmnumber="2020" vmtag=""/>
+    <voicemail numeric="63001" carrier="Vodacom" vmnumber="1121" vmtag=""/>
+    <voicemail numeric="64004" carrier="Vodacom" vmnumber="123" vmtag=""/>
+    <voicemail numeric="64004" carrier="VDF TZ" vmnumber="123" vmtag=""/>
+    <voicemail numeric="64304" carrier="Vodafone" vmnumber="84121" vmtag=""/>
+    <voicemail numeric="65101" carrier="Vodacom" vmnumber="133" vmtag=""/>
+    <voicemail numeric="65501" carrier="Vodacom" vmnumber="132" vmtag=""/>
+
+    <voicemail numeric="70401" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="70403" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="704030" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="70601" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="70604" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="708001" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="71021" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="710300" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="71030" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="71073" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="71203" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="71204" carrier="movistar" vmnumber="*1690" vmtag=""/>
+    <voicemail numeric="71402" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="71403" carrier="Claro" vmnumber="*80" vmtag=""/>
+    <voicemail numeric="714020" carrier="movistar" vmnumber="*86" vmtag=""/>
+    <voicemail numeric="71606" carrier="movistar" vmnumber="*169" vmtag=""/>
+    <voicemail numeric="71610" carrier="Claro" vmnumber="131" vmtag=""/>
+    <voicemail numeric="71617" carrier="entel" vmnumber="124" vmtag=""/>
+    <voicemail numeric="72207" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="72234" carrier="personal" vmnumber="*555" vmtag=""/>
+    <voicemail numeric="722340" carrier="personal" vmnumber="*555" vmtag=""/>
+    <voicemail numeric="722070" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722071" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722072" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722073" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722074" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722075" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722076" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722077" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722078" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722079" carrier="movistar" vmnumber="555" vmtag=""/>
+    <voicemail numeric="722310" carrier="Claro" vmnumber="*2747" vmtag=""/>
+    <voicemail numeric="72406" carrier="TW Mobile" vmnumber="*555" vmtag=""/>
+    <voicemail numeric="72410" carrier="TW Mobile" vmnumber="*555" vmtag=""/>
+    <voicemail numeric="72411" carrier="TW Mobile" vmnumber="*555" vmtag=""/>
+    <voicemail numeric="72423" carrier="TW Mobile" vmnumber="*555" vmtag=""/>
+    <voicemail numeric="73001" carrier="entel" vmnumber="#123" vmtag=""/>
+    <voicemail numeric="73002" carrier="movistar" vmnumber="500" vmtag=""/>
+    <voicemail numeric="73003" carrier="Claro" vmnumber="*20" vmtag=""/>
+    <voicemail numeric="73009" carrier="WOW" vmnumber="*99" vmtag=""/>
+    <voicemail numeric="732101" carrier="Movistar" vmnumber="*123" vmtag=""/>
+    <voicemail numeric="732111" carrier="Movistar" vmnumber="*123" vmtag=""/>
+    <voicemail numeric="732103" carrier="Movistar" vmnumber="*123" vmtag=""/>
+    <voicemail numeric="732123" carrier="movistar" vmnumber="*123" vmtag=""/>
+    <voicemail numeric="732130" carrier="Avantel 4G LTE" vmnumber="*123" vmtag=""/>
+    <voicemail numeric="732187" carrier="ETB" vmnumber="*123" vmtag=""/>
+    <voicemail numeric="73404" carrier="movistar" vmnumber="*2" vmtag=""/>
+    <voicemail numeric="73406" carrier="Movilnet" vmnumber="*9" vmtag="" />
+    <voicemail numeric="74000" carrier="movistar" vmnumber="*82" vmtag=""/>
+    <voicemail numeric="74001" carrier="movistar" vmnumber="*82" vmtag=""/>
+    <voicemail numeric="74002" carrier="movistar" vmnumber="*82" vmtag=""/>
+    <voicemail numeric="74807" carrier="movistar" vmnumber="6684" vmtag=""/>
+    <voicemail numeric="64700" carrier="Orange Réunion" vmnumber="800" vmtag=""/>
+</voicemail>
