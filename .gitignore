@@ -17,3 +17,6 @@ RULE2_REFINED.md
 
 # Never commit proprietary/prebuilt APKs
 *.apk
+
+# IMS/VoLTE graft APKs are committed in-tree (self-contained graft)
+!ims/blobs/**/*.apk
