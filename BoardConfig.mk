@@ -112,7 +112,13 @@ BOARD_KERNEL_CMDLINE := \
     nosoftlockup \
     console=ttynull \
     qcom_geni_serial.con_enabled=0
-BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
+# SELinux ENFORCING (beta gate, 2026-06-16). Removing androidboot.selinux=permissive
+# makes the device boot enforcing by default. Both prior blockers are closed and
+# validated live under setenforce 1: the lineage charging HAL + dt2w_uewake run in
+# their own system_ext coredomains with zero denials, and AOD+DT2W work together.
+# Boot-time denials were all benign under permissive (flags_health_check aconfig
+# oneshot, init netlink self-read). To temporarily revert for diagnosis, restore:
+#   BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
 BOARD_BOOTCONFIG := \
     androidboot.hardware=qcom \
     androidboot.memcg=1 \
