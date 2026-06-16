@@ -75,6 +75,21 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.bluetooth.leaudio_switcher.supported=true
 
+# VoLTE/VT enablement. This network is VoLTE-only (no 2G/3G CS fallback) and the
+# modem+network are VoLTE-capable (mVopsSupport=2, VOICE available over LTE), but
+# the framework gates IMS voice off: dumpsys carrier_config shows
+# carrier_volte_available_bool=false for the carrier, so calls connect with NO
+# voice media bearer (CallQuality numRtpPackets{Transmitted,Received}=0) -> no
+# audio either way. These debug-override props bypass the framework VoLTE/VT/WFC
+# availability check (the standard LineageOS fix when the modem supports VoLTE but
+# the generic carrier config doesn't enable it). See volte_call_audio_2026-06-16.
+# Validate end-to-end after a clean permissive boot: a call should show RTP>0 +
+# audio. If insufficient, add a CarrierConfig overlay (carrier_volte_available_bool=true).
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.dbg.volte_avail_ovr=1 \
+    persist.dbg.vt_avail_ovr=1 \
+    persist.dbg.wfc_avail_ovr=1
+
 # IR remote: the HAL ships in the stock vendor (vendor.ir-default +
 # consumerir.zte.so). We ship only the consumerir feature permission so a
 # user-installed IR app works; the proprietary KooKong app is NOT bundled
