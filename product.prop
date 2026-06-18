@@ -2,3 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # TODO: Populate from product/build.prop after extraction
+
+# Route VoLTE/IMS in-call audio through the modem voice path (telephony_rx/tx)
+# instead of the dead-end AP-side VoIP path. Stock RedMagicOS sets this; without
+# it the QTI audio HAL opens PAL_STREAM_VOIP_RX (nothing feeds it) and the modem
+# voice session never starts (AHAL_Telephony VoiceStart never fires) → call silent.
+# Lives in product (LOS-built, ships in our super); vendor.prop would NOT ship
+# because we ride stock vendor.
+use.voice.path.for.pcm.voip=true
