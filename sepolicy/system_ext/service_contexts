@@ -1,0 +1,5 @@
+# QTI audio HAL vendor-parameter parser (the VoLTE-audio fix). AOSP-16 core sepolicy
+# has no service_contexts entry for IHalAdapterVendorExtension — it's device-supplied.
+# Labeled with our locally-defined type (see qtiaudiohalvendorextn.te); audioserver is
+# granted find on it there.
+android.media.audio.IHalAdapterVendorExtension/default    u:object_r:audio_vendor_parameter_parser_service:s0
