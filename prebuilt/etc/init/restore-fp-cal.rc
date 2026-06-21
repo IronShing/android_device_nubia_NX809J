@@ -1,0 +1,48 @@
+# Make fingerprint survive a /data wipe (factory reset / EDL stock<->LOS swap).
+# Both halves of the working Goodix UDFPS setup live on /data and are wiped:
+#   - the per-unit calibration in /data/vendor/goodix
+#   - the virtual-HAL config props (normally /data/property/persistent_properties)
+# Without this, after any wipe enroll fails (cali_state==0) and the HAL never gets
+# onPointerDown. This re-seeds both in post-fs-data, BEFORE the Goodix HAL starts.
+#
+# The base cali_*.so are static (the HAL never rewrites them — verified by mtimes),
+# so the unconditional copy is safe on every boot; the HAL's own runtime files in the
+# same dir (cali_2, finger_*, auth_token) are NOT listed here, so they survive.
+# Cal is this unit's transplant, shipped read-only in /product/etc/goodix_cal.
+# (init-domain writes to vendor data + sets vendor props — relies on the device
+# shipping permissive; see BoardConfig.)
+
+on post-fs-data
+    # Virtual-HAL config props (persist; re-asserted each boot for the post-wipe case)
+    setprop persist.vendor.fingerprint.virtual.type udfps
+    setprop persist.vendor.fingerprint.virtual.sensor_location 608:2024:94
+    setprop persist.vendor.fingerprint.virtual.udfps.control_illumination true
+    setprop persist.vendor.fingerprint.virtual.udfps.display_touch false
+
+    # Seed / re-assert the Goodix base calibration
+    mkdir /data/vendor/goodix 0700 system system
+    copy /product/etc/goodix_cal/cali_0_0.so /data/vendor/goodix/cali_0_0.so
+    copy /product/etc/goodix_cal/cali_0_1.so /data/vendor/goodix/cali_0_1.so
+    copy /product/etc/goodix_cal/cali_0_2.so /data/vendor/goodix/cali_0_2.so
+    copy /product/etc/goodix_cal/cali_0_3.so /data/vendor/goodix/cali_0_3.so
+    copy /product/etc/goodix_cal/cali_3.so /data/vendor/goodix/cali_3.so
+    copy /product/etc/goodix_cal/cali_4.so /data/vendor/goodix/cali_4.so
+    copy /product/etc/goodix_cal/sys_cached_f_params_0.so /data/vendor/goodix/sys_cached_f_params_0.so
+    copy /product/etc/goodix_cal/sys_cached_params_0.so /data/vendor/goodix/sys_cached_params_0.so
+    chown system system /data/vendor/goodix/cali_0_0.so
+    chown system system /data/vendor/goodix/cali_0_1.so
+    chown system system /data/vendor/goodix/cali_0_2.so
+    chown system system /data/vendor/goodix/cali_0_3.so
+    chown system system /data/vendor/goodix/cali_3.so
+    chown system system /data/vendor/goodix/cali_4.so
+    chown system system /data/vendor/goodix/sys_cached_f_params_0.so
+    chown system system /data/vendor/goodix/sys_cached_params_0.so
+    chmod 0600 /data/vendor/goodix/cali_0_0.so
+    chmod 0600 /data/vendor/goodix/cali_0_1.so
+    chmod 0600 /data/vendor/goodix/cali_0_2.so
+    chmod 0600 /data/vendor/goodix/cali_0_3.so
+    chmod 0600 /data/vendor/goodix/cali_3.so
+    chmod 0600 /data/vendor/goodix/cali_4.so
+    chmod 0600 /data/vendor/goodix/sys_cached_f_params_0.so
+    chmod 0600 /data/vendor/goodix/sys_cached_params_0.so
+    restorecon_recursive /data/vendor/goodix

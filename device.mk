@@ -161,6 +161,23 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/disable-crashloop-hals.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-crashloop-hals.rc
 
+# Goodix UDFPS: make fingerprint survive a /data wipe. The working cal
+# (/data/vendor/goodix) and the virtual-HAL config props both live on /data and are
+# lost on a factory reset / EDL stock<->LOS swap. restore-fp-cal.rc re-seeds both in
+# post-fs-data (before the Goodix HAL starts). The cal is this unit's per-unit
+# transplant; shipped read-only in /product/etc/goodix_cal. See the .rc + memory
+# fp_data_wipe_restore_2026-06-18.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/init/restore-fp-cal.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/restore-fp-cal.rc \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_0.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_0.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_1.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_1.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_2.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_2.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_3.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_3.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_3.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_3.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_4.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_4.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/sys_cached_f_params_0.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/sys_cached_f_params_0.so \
+    $(LOCAL_PATH)/fingerprint/goodix_cal/sys_cached_params_0.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/sys_cached_params_0.so
+
 # Double-tap-to-wake (WORKING). The ZTE/Synaptics zte_tpd driver detects the
 # double-tap in low-power gesture mode and, instead of an input KEY_WAKEUP, fires
 # a "double_tap=true" netlink uevent + holds the SoC awake ~2s (pm_wakeup_ws_event).
