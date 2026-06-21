@@ -1,0 +1,151 @@
+From 811188ea5744e831bb36da281e8b0526af31555f Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Sun, 21 Jun 2026 15:02:49 +0300
+Subject: [PATCH 2/2] build-compat: fix Kotlin/Soong compile under LOS-23.2 /
+ Android-16
+
+Targeted, no-functional-change fixes so the tree compiles: hoist a const out of a
+non-const scope (DeskSwitchAnimationUtils), resolve Kotlin smart-cast-on-var errors
+(PreferenceGraphBuilder), add -Xjvm-default=all-compatibility (SliderPreference), and
+minor compat tweaks (SettingsTopAppBar, AppListRepository, AppIdAppFunctionAccessPolicy).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Change-Id: I5898c6840bf269f1c53a4a2c9ffecd5b89e01ae3
+---
+ .../animation/DeskSwitchAnimationUtils.kt       |  9 +++++----
+ .../settingslib/graph/PreferenceGraphBuilder.kt |  7 ++++---
+ .../SettingsLib/SliderPreference/Android.bp     |  3 +++
+ .../spa/widget/scaffold/SettingsTopAppBar.kt    | 17 +++++++----------
+ .../model/app/AppListRepository.kt              |  3 ++-
+ .../appfunction/AppIdAppFunctionAccessPolicy.kt |  4 ++--
+ 6 files changed, 23 insertions(+), 20 deletions(-)
+
+diff --git a/libs/WindowManager/Shell/src/com/android/wm/shell/desktopmode/multidesks/animation/DeskSwitchAnimationUtils.kt b/libs/WindowManager/Shell/src/com/android/wm/shell/desktopmode/multidesks/animation/DeskSwitchAnimationUtils.kt
+index 0503705bc..1a6130c5f 100644
+--- a/libs/WindowManager/Shell/src/com/android/wm/shell/desktopmode/multidesks/animation/DeskSwitchAnimationUtils.kt
++++ b/libs/WindowManager/Shell/src/com/android/wm/shell/desktopmode/multidesks/animation/DeskSwitchAnimationUtils.kt
+@@ -23,7 +23,12 @@ import androidx.dynamicanimation.animation.SpringForce
+ import com.android.internal.annotations.VisibleForTesting
+ import com.android.wm.shell.shared.animation.PhysicsAnimator
+ 
++/** Desk switch transition system properties group. */
++@VisibleForTesting
++const val SYSTEM_PROPERTIES_GROUP = "persist.wm.debug.desktop_transitions.desk_switch"
++
+ object DeskSwitchAnimationUtils {
++
+     /** The percentage of the screen that tasks will slide before/after fading. */
+     const val LATERAL_MOTION_SCREEN_PCT = 0.25f
+ 
+@@ -76,10 +81,6 @@ object DeskSwitchAnimationUtils {
+     val DEBUG_ANIMATION =
+         SystemProperties.getBoolean("$SYSTEM_PROPERTIES_GROUP.debug_animation_steps", false)
+ 
+-    /** Desk switch transition system properties group. */
+-    @VisibleForTesting
+-    const val SYSTEM_PROPERTIES_GROUP = "persist.wm.debug.desktop_transitions.desk_switch"
+-
+     /**
+      * Desk switch transition system property value with [name].
+      *
+diff --git a/packages/SettingsLib/Graph/src/com/android/settingslib/graph/PreferenceGraphBuilder.kt b/packages/SettingsLib/Graph/src/com/android/settingslib/graph/PreferenceGraphBuilder.kt
+index 0156d4181..54e84d6d3 100644
+--- a/packages/SettingsLib/Graph/src/com/android/settingslib/graph/PreferenceGraphBuilder.kt
++++ b/packages/SettingsLib/Graph/src/com/android/settingslib/graph/PreferenceGraphBuilder.kt
+@@ -237,10 +237,11 @@ private constructor(
+         if (includeHierarchy) {
+             var flagEnabled: Boolean? = null
+             factory.parameters(context).collect {
+-                if (flagEnabled == false) return@collect
++                val enabled = flagEnabled
++                if (enabled == false) return@collect
+                 val screenMetadata = factory.create(context, it)
+-                if (flagEnabled == null) flagEnabled = checkScreenFlag(screenMetadata)
+-                if (flagEnabled) addPreferenceScreen(screenMetadata)
++                if (enabled == null) flagEnabled = checkScreenFlag(screenMetadata)
++                if (flagEnabled == true) addPreferenceScreen(screenMetadata)
+             }
+         }
+         return true
+diff --git a/packages/SettingsLib/SliderPreference/Android.bp b/packages/SettingsLib/SliderPreference/Android.bp
+index 4b2200839..d6efdf55c 100644
+--- a/packages/SettingsLib/SliderPreference/Android.bp
++++ b/packages/SettingsLib/SliderPreference/Android.bp
+@@ -14,6 +14,9 @@ android_library {
+         "SettingsLibApexDefaults",
+         "SettingsLintDefaults",
+     ],
++    kotlincflags: [
++        "-Xjvm-default=all-compatibility",
++    ],
+ 
+     srcs: [
+         "src/**/*.java",
+diff --git a/packages/SettingsLib/Spa/spa/src/com/android/settingslib/spa/widget/scaffold/SettingsTopAppBar.kt b/packages/SettingsLib/Spa/spa/src/com/android/settingslib/spa/widget/scaffold/SettingsTopAppBar.kt
+index 9772dca08..d1d32ebbf 100644
+--- a/packages/SettingsLib/Spa/spa/src/com/android/settingslib/spa/widget/scaffold/SettingsTopAppBar.kt
++++ b/packages/SettingsLib/Spa/spa/src/com/android/settingslib/spa/widget/scaffold/SettingsTopAppBar.kt
+@@ -48,17 +48,14 @@ private fun NavigationIcon(isFirstLayerPageWhenEmbedded: Boolean) {
+ 
+ /** Whether the current page should show the navigate back button. */
+ @Composable
+-private fun shouldShowNavigateBack(isFirstLayerPageWhenEmbedded: Boolean): Boolean =
+-    when {
+-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> true
+-        !isFirstLayerPageWhenEmbedded -> true
+-        else -> {
+-            val activity = localActivity() ?: return true
+-            remember(activity) {
+-                !ActivityEmbeddingController.getInstance(activity).isActivityEmbedded(activity)
+-            }
+-        }
++private fun shouldShowNavigateBack(isFirstLayerPageWhenEmbedded: Boolean): Boolean {
++    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
++    if (!isFirstLayerPageWhenEmbedded) return true
++    val activity = localActivity() ?: return true
++    return remember(activity) {
++        !ActivityEmbeddingController.getInstance(activity).isActivityEmbedded(activity)
+     }
++}
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ internal fun TopAppBarScrollBehavior.collapse() {
+diff --git a/packages/SettingsLib/SpaPrivileged/src/com/android/settingslib/spaprivileged/model/app/AppListRepository.kt b/packages/SettingsLib/SpaPrivileged/src/com/android/settingslib/spaprivileged/model/app/AppListRepository.kt
+index 132ddad31..79f676b7c 100644
+--- a/packages/SettingsLib/SpaPrivileged/src/com/android/settingslib/spaprivileged/model/app/AppListRepository.kt
++++ b/packages/SettingsLib/SpaPrivileged/src/com/android/settingslib/spaprivileged/model/app/AppListRepository.kt
+@@ -270,7 +270,8 @@ class AppListRepositoryImpl(context: Context, private val featureFlags: FeatureF
+         key: K,
+         block: suspend () -> V,
+     ): Deferred<V> = coroutineScope {
+-        cache.computeIfAbsent(key) { this@coroutineScope.async { block() } }
++        @Suppress("UNCHECKED_CAST")
++        cache.computeIfAbsent(key!!) { this@coroutineScope.async { block() } }
+     }
+ 
+     override suspend fun loadApps(
+diff --git a/services/permission/java/com/android/server/permission/access/appfunction/AppIdAppFunctionAccessPolicy.kt b/services/permission/java/com/android/server/permission/access/appfunction/AppIdAppFunctionAccessPolicy.kt
+index 6b5518954..d2a7a27f7 100644
+--- a/services/permission/java/com/android/server/permission/access/appfunction/AppIdAppFunctionAccessPolicy.kt
++++ b/services/permission/java/com/android/server/permission/access/appfunction/AppIdAppFunctionAccessPolicy.kt
+@@ -89,7 +89,7 @@ class AppIdAppFunctionAccessPolicy : SchemePolicy() {
+     ): Int {
+         val targetUid = UserHandle.getUid(targetUserId, targetAppId)
+         return state.userStates[agentUserId]
+-            ?.appIdAppFunctionAccessFlags[agentAppId]
++            ?.appIdAppFunctionAccessFlags?.get(agentAppId)
+             ?.get(targetUid) ?: 0
+     }
+ 
+@@ -121,7 +121,7 @@ class AppIdAppFunctionAccessPolicy : SchemePolicy() {
+         }
+ 
+         val existingAgentState =
+-            newState.userStates[agentUserId]?.appIdAppFunctionAccessFlags[agentAppId]
++            newState.userStates[agentUserId]?.appIdAppFunctionAccessFlags?.get(agentAppId)
+         val oldFlags = existingAgentState?.get(targetUid) ?: 0
+         val newFlags = (oldFlags andInv flagMask) or (flags and flagMask)
+         if (oldFlags == newFlags) {
+-- 
+2.54.0
+

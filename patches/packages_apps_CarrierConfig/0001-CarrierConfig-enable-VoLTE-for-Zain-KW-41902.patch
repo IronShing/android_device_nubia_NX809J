@@ -1,0 +1,38 @@
+From 3c4854196982b25f5f6fc2d810fdec83ec074782 Mon Sep 17 00:00:00 2001
+From: NX809J <ironsingh25@gmail.com>
+Date: Wed, 17 Jun 2026 16:08:04 +0300
+Subject: [PATCH] CarrierConfig: enable VoLTE for Zain KW (41902)
+
+LOS ships no carrier config for MCC419/MNC02, so carrier_config_applied was
+false and VoLTE keys defaulted off -> MMTel stuck emergency-only (no VOICE).
+Proven live on NX809J: these keys flip MMTel VOICE capability on.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Change-Id: I9a7d71ad3851fa6e5bb56c3d8935cdd164ddfda9
+---
+ assets/carrier_config_mccmnc_41902.xml | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+ create mode 100644 assets/carrier_config_mccmnc_41902.xml
+
+diff --git a/assets/carrier_config_mccmnc_41902.xml b/assets/carrier_config_mccmnc_41902.xml
+new file mode 100644
+index 0000000..b4955f1
+--- /dev/null
++++ b/assets/carrier_config_mccmnc_41902.xml
+@@ -0,0 +1,13 @@
++<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
++<!-- Zain Kuwait (MCC 419 / MNC 02). Enables VoLTE: the stock LOS CarrierConfig
++     has no entry for this PLMN, so carrier_config_applied was false and every
++     VoLTE key defaulted off, leaving MMTel at emergency-only (no VOICE). Setting
++     these live (cc set-value -p) unlocked the MMTel VOICE capability on-device. -->
++<carrier_config_list>
++    <carrier_config>
++        <boolean name="carrier_volte_available_bool" value="true" />
++        <boolean name="carrier_volte_provisioned_bool" value="true" />
++        <boolean name="carrier_volte_provisioning_required_bool" value="false" />
++        <boolean name="enhanced_4g_lte_on_by_default_bool" value="true" />
++    </carrier_config>
++</carrier_config_list>
+-- 
+2.54.0
+

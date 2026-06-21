@@ -1,0 +1,48 @@
+From bd5ec340bdde76a2b9442cf3983b74b4636abe85 Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Sun, 21 Jun 2026 15:02:49 +0300
+Subject: [PATCH 1/2] BatteryService: report ADAPTIVE_LONGLIFE when
+ plugged-but-discharging
+
+LineageOS Charging Control holds the limit by writing charging_enabled=0, which makes
+the gauge report DISCHARGING while still plugged (vendor health HAL leaves
+chargingState INVALID; no node yields a clean NOT_CHARGING). Report
+CHARGING_POLICY_ADAPTIVE_LONGLIFE via EXTRA_CHARGING_STATUS in that state so SystemUI
+shows the battery-defender (hold) glyph instead of a misleading charging bolt.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Change-Id: I91c81a81df63671ce924d9650bba832eff88a0e2
+---
+ .../java/com/android/server/BatteryService.java  | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/BatteryService.java b/services/core/java/com/android/server/BatteryService.java
+index f4b69f16c..ad74088b4 100644
+--- a/services/core/java/com/android/server/BatteryService.java
++++ b/services/core/java/com/android/server/BatteryService.java
+@@ -1052,7 +1052,21 @@ public final class BatteryService extends SystemService {
+                 mHealthInfo.maxChargingVoltageMicrovolts);
+         intent.putExtra(BatteryManager.EXTRA_CHARGE_COUNTER, mHealthInfo.batteryChargeCounterUah);
+         intent.putExtra(BatteryManager.EXTRA_CYCLE_COUNT, mHealthInfo.batteryCycleCount);
+-        intent.putExtra(BatteryManager.EXTRA_CHARGING_STATUS, mHealthInfo.chargingState);
++        // NX809J: surface the charge-limit ("battery defender") state to SystemUI so the
++        // status-bar battery icon reflects it. The LineageOS Charging Control HAL holds the
++        // limit by disabling charging at the sysfs node, which makes the gauge report
++        // DISCHARGING while a charger is still connected (this charger drains the load rather
++        // than reporting NOT_CHARGING, and the vendor health HAL leaves chargingState INVALID).
++        // When we're plugged in yet discharging, report CHARGING_POLICY_ADAPTIVE_LONGLIFE so
++        // BatteryControllerImpl.isBatteryDefenderMode() trips and the defend icon shows.
++        int chargingStatus = mHealthInfo.chargingState;
++        final boolean chargerOnline = mHealthInfo.chargerAcOnline || mHealthInfo.chargerUsbOnline
++                || mHealthInfo.chargerWirelessOnline || mHealthInfo.chargerDockOnline;
++        if (chargerOnline
++                && mHealthInfo.batteryStatus == BatteryManager.BATTERY_STATUS_DISCHARGING) {
++            chargingStatus = BatteryManager.CHARGING_POLICY_ADAPTIVE_LONGLIFE;
++        }
++        intent.putExtra(BatteryManager.EXTRA_CHARGING_STATUS, chargingStatus);
+         intent.putExtra(BatteryManager.EXTRA_CAPACITY_LEVEL, mHealthInfo.batteryCapacityLevel);
+         intent.putExtra(BatteryManager.EXTRA_MAXIMUM_CAPACITY, mHealthInfo.batteryFullChargeUah);
+         intent.putExtra(
+-- 
+2.54.0
+

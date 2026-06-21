@@ -1,0 +1,96 @@
+From 53d9ec3d5a98fa8931d977827c2627a3f77553be Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Sun, 21 Jun 2026 15:03:03 +0300
+Subject: [PATCH] config: NX809J build fixes (prebuilt-kernel defaults, drop
+ incompatible bits)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Modifications to shared LOS build files that can't be expressed from the device tree:
+- BoardConfigKernel.mk: default the kernel build vars (TARGET_KERNEL_SOURCE, KERNEL_ARCH,
+  KERNEL_MAKE_CMD, etc.) + a dummy KERNEL_BUILD_OUT_PREFIX so Soong's lineage_generator
+  resolves them in the prebuilt-kernel setup (these vars are unused at runtime; left
+  TARGET_KERNEL_PLATFORM_TARGET empty so kernel.mk takes the prebuilt branch).
+- common.mk: disable CUSTOM_LOCALES (ast/gd/cy/fur/nn) — incompatible with this build.
+- common_mobile_full.mk: drop Twelve from PRODUCT_PACKAGES.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Change-Id: I4b8f61bb7fbcab6955f05ed37f9f796a3b9bee4e
+---
+ config/BoardConfigKernel.mk  | 14 +++++++++++++-
+ config/common.mk             | 14 +++++++-------
+ config/common_mobile_full.mk |  3 +--
+ 3 files changed, 21 insertions(+), 10 deletions(-)
+
+diff --git a/config/BoardConfigKernel.mk b/config/BoardConfigKernel.mk
+index 9b01f03..5b44594 100644
+--- a/config/BoardConfigKernel.mk
++++ b/config/BoardConfigKernel.mk
+@@ -270,11 +270,23 @@ KERNEL_MAKE_FLAGS += LIBCLANG_PATH=$(TARGET_KERNEL_CLANG_PATH)/lib
+ # Set the out dir for the kernel's O= arg
+ # This needs to be an absolute path, so only set this if the standard out dir isn't used
+ OUT_DIR_PREFIX := $(shell echo $(OUT_DIR) | sed -e 's|/target/.*$$||g')
+-KERNEL_BUILD_OUT_PREFIX :=
++KERNEL_BUILD_OUT_PREFIX := /tmp/dummy_kernel_out/
+ ifeq ($(OUT_DIR_PREFIX),out)
+     KERNEL_BUILD_OUT_PREFIX := $(BUILD_TOP)/
+ endif
+ 
++# Default these to non-empty values so Soong's lineage_generator can resolve them
++# (We use prebuilt kernel - these aren't actually used at runtime)
++# NOTE: TARGET_KERNEL_PLATFORM_TARGET intentionally NOT defaulted — leaving it
++# empty causes kernel.mk to take the prebuilt-kernel branch instead of the
++# kernel-platform-source branch (which would fail on missing source).
++TARGET_KERNEL_SOURCE ?= device/nubia/NX809J-kernel
++KERNEL_ARCH ?= arm64
++KERNEL_MAKE_CMD ?= true
++KERNEL_MAKE_FLAGS ?=
++KERNEL_CROSS_COMPILE ?=
++KERNEL_PATH ?= /tmp/dummy_kernel_path
++
+ ifneq ($(TARGET_KERNEL_PLATFORM_TARGET),)
+ KERNEL_PATH := $(abspath $(BUILD_TOP)/../kernel-$(TARGET_KERNEL_VERSION))
+ endif
+diff --git a/config/common.mk b/config/common.mk
+index b961788..c7cb273 100644
+--- a/config/common.mk
++++ b/config/common.mk
+@@ -275,13 +275,13 @@ PRODUCT_PACKAGES += \
+     NetworkStackOverlay \
+     PermissionControllerOverlay
+ 
+-# Translations
+-CUSTOM_LOCALES += \
+-    ast_ES \
+-    gd_GB \
+-    cy_GB \
+-    fur_IT \
+-    nn_NO
++# Translations (CUSTOM_LOCALES disabled — not compatible with current build)
++# CUSTOM_LOCALES += \
++#     ast_ES \
++#     gd_GB \
++#     cy_GB \
++#     fur_IT \
++#     nn_NO
+ 
+ PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS += vendor/crowdin/overlay
+ PRODUCT_PACKAGE_OVERLAYS += vendor/crowdin/overlay
+diff --git a/config/common_mobile_full.mk b/config/common_mobile_full.mk
+index 4de1d42..340e38d 100644
+--- a/config/common_mobile_full.mk
++++ b/config/common_mobile_full.mk
+@@ -12,8 +12,7 @@ PRODUCT_PACKAGES += \
+     Etar \
+     Profiles \
+     Recorder \
+-    Seedvault \
+-    Twelve
++    Seedvault
+ 
+ ifneq ($(PRODUCT_NO_CAMERA),true)
+ PRODUCT_PACKAGES += \
+-- 
+2.54.0
+
