@@ -170,6 +170,25 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES := \
     $(wildcard device/nubia/NX809J-kernel/prebuilt/vendor_ramdisk/lib/modules/*.ko)
 BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD := \
     $(strip $(shell cat device/nubia/NX809J-kernel/prebuilt/vendor_ramdisk/lib/modules/modules.load))
+# Recovery/fastbootd USB fix (2026-06-16): the stock vendor_ramdisk modules.load
+# (first-stage) omits the dwc3 USB controller + eUSB2 PHY/repeater chain — USB
+# normally comes up in 2nd stage from vendor_dlkm. RECOVERY/fastbootd have no 2nd
+# stage, so without these the dwc3 UDC (/sys/class/udc/a600000.dwc3) never
+# appears -> fastbootd presents NO USB -> can't flash (pstore: "wait for
+# .../udc/a600000.dwc3 timed out"). Append the USB chain in dependency order;
+# every low-level dep (clk-qcom, qcom-scm, smem, gdsc-regulator, gh_*,
+# qti-regmap-debugfs, ...) is already loaded by the list above.
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD += \
+    repeater.ko \
+    redriver.ko \
+    wcd_usbss_i2c.ko \
+    repeater-qti-pmic-eusb2.ko \
+    phy-qcom-eusb2-repeater.ko \
+    phy-msm-m31-eusb2.ko \
+    phy-qcom-m31-eusb2.ko \
+    phy-msm-ssusb-qmp.ko \
+    phy-generic.ko \
+    dwc3-msm.ko
 TARGET_HAS_GENERIC_KERNEL_IMAGE_HEADERS := true
 
 # Metadata
