@@ -76,4 +76,12 @@ It allows additional grants on top of privapp-permissions-platform.xml
         <permission name="android.permission.WRITE_EMBEDDED_SUBSCRIPTIONS"/>
     </privapp-permissions>
 
+    <!-- QtiTelephonyService: shares android.uid.qtiphone (privileged); needs
+         MODIFY_AUDIO_ROUTING to push vsid/call_state to AudioManager, which starts
+         the VoLTE modem voice session. Without this allowlist system_server is
+         fatal at boot. -->
+    <privapp-permissions package="com.qualcomm.qti.telephonyservice">
+        <permission name="android.permission.MODIFY_AUDIO_ROUTING"/>
+    </privapp-permissions>
+
 </permissions>

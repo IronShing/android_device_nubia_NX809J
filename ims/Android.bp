@@ -1,0 +1,87 @@
+// QTI IMS / VoLTE prebuilt apps grafted from the stock vendor dump.
+// kati forbids .apk in PRODUCT_COPY_FILES ("use BUILD_PREBUILT instead"), so the
+// APKs are imported here as android_app_import modules and pulled in via
+// PRODUCT_PACKAGES from ims.mk. They are presigned with the vendor platform keys
+// AND preprocessed: true — required because they targetSdk>=30 and are signed
+// with signature scheme v2; the build must take them byte-for-byte or it would
+// wreck the signature (and re-aligning/recompressing priv-app dex would too).
+
+android_app_import {
+    name: "ims",
+    apk: "blobs/priv-app/ims/ims.apk",
+    presigned: true,
+    preprocessed: true,
+    privileged: true,
+    system_ext_specific: true,
+}
+
+android_app_import {
+    name: "QtiTelephony",
+    apk: "blobs/priv-app/QtiTelephony/QtiTelephony.apk",
+    presigned: true,
+    preprocessed: true,
+    privileged: true,
+    system_ext_specific: true,
+}
+
+android_app_import {
+    name: "QualcommVoiceActivation",
+    apk: "blobs/priv-app/QualcommVoiceActivation/QualcommVoiceActivation.apk",
+    presigned: true,
+    preprocessed: true,
+    privileged: true,
+    system_ext_specific: true,
+}
+
+android_app_import {
+    name: "QtiTelephonyService",
+    apk: "blobs/app/QtiTelephonyService/QtiTelephonyService.apk",
+    presigned: true,
+    preprocessed: true,
+    system_ext_specific: true,
+}
+
+android_app_import {
+    name: "imssettings",
+    apk: "blobs/app/imssettings/imssettings.apk",
+    presigned: true,
+    preprocessed: true,
+    system_ext_specific: true,
+}
+
+// These three declare sharedUserId="android.uid.phone" (uid 1001), whose seed
+// package com.android.phone is signed with the LineageOS platform key. A
+// presigned (stock-vendor-key) APK in that shared uid → "Signature mismatch on
+// system package ... for shared user android.uid.phone" → system_server bootloop
+// (PackageManagerService.reconcilePackages). Re-sign them with the platform key
+// so they match. (Re-signing precludes presigned/preprocessed; dexpreopt off to
+// skip uses-lib/verification against the unmodeled qti-telephony libs.)
+android_app_import {
+    name: "ImsRcsService",
+    apk: "blobs/app/ImsRcsService/ImsRcsService.apk",
+    certificate: "platform",
+    system_ext_specific: true,
+    dex_preopt: {
+        enabled: false,
+    },
+}
+
+android_app_import {
+    name: "ImsDataChannelService",
+    apk: "blobs/app/ImsDataChannelService/ImsDataChannelService.apk",
+    certificate: "platform",
+    system_ext_specific: true,
+    dex_preopt: {
+        enabled: false,
+    },
+}
+
+android_app_import {
+    name: "uceShimService",
+    apk: "blobs/app/uceShimService/uceShimService.apk",
+    certificate: "platform",
+    system_ext_specific: true,
+    dex_preopt: {
+        enabled: false,
+    },
+}
