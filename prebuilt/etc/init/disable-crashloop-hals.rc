@@ -1,0 +1,34 @@
+# Disable two crash-looping stock-vendor HALs by stopping them the instant init
+# brings them up (and again if init schedules a restart), breaking the respawn loop.
+# Same approach as disable-ssdaemon.rc — their .rc files live on the stock /vendor
+# partition we ride and can't edit, but /product/etc/init is parsed AFTER /vendor so
+# these stop triggers win. Both stops are belt-and-suspenders because these abort
+# during init (faster than the modem ssdaemons), so catch them in running OR restarting.
+#
+# 1. gto_secure_element_aidl_service (Thales/Gemalto eSE HAL): aborts every ~5s with
+#    "Check failed: status == STATUS_OK (status=-3)" — the SE stack can't initialize on
+#    this port. Each abort flips sys.init.updatable_crashing=1, which runs
+#    flags_health_check (RescueParty) on a loop, continuously resetting feature flags
+#    and flooding the log with ~3500 AVC denials. Disabling stops that storm and the
+#    battery drain. eSE is already non-functional (it's broken); basic NFC + host card
+#    emulation (HCE) are unaffected. It IS VINTF-declared
+#    (/vendor/etc/vintf/manifest/android.hardware.secure_element.xml), but a
+#    declared-not-served HAL is not a runtime boot gate — clients fail gracefully.
+#    (Build/RE: confirm NFC still works and there's no boot regression.)
+#
+# 2. ifaaaidl (vendor.zte.fingerprint.ifaaaidl-service): China-market IFAA
+#    biometric-pay attestation HAL, restarting hundreds of times per boot. Not in any
+#    VINTF manifest, unused on LineageOS. The working Goodix UDFPS (ztecmdaidl) is a
+#    separate service and is unaffected.
+
+on property:init.svc.gto_secure_element_aidl_service=running
+    stop gto_secure_element_aidl_service
+
+on property:init.svc.gto_secure_element_aidl_service=restarting
+    stop gto_secure_element_aidl_service
+
+on property:init.svc.ifaaaidl=running
+    stop ifaaaidl
+
+on property:init.svc.ifaaaidl=restarting
+    stop ifaaaidl

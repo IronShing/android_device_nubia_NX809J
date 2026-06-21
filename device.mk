@@ -96,6 +96,26 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # nothing to bind. See ims.mk + volte_call_audio_2026-06-16.
 include $(LOCAL_PATH)/ims.mk
 
+# QTI AIDL audio HAL vendor-parameter extension — THE fix for silent VoLTE audio.
+# On Android 16 the AIDL audio HAL no longer parses legacy AudioManager.setParameters
+# KV strings itself: AOSP DeviceHalAidl delegates the raw "call_state=2;vsid=...;
+# call_type=LTE" string to the system_ext service android.media.audio.IHalAdapterVendorExtension/
+# default, which splits it into discrete VendorParameters and forwards them to the QTI
+# HAL's onSetTelephonyParameters -> Telephony::reconfigure -> updateCalls -> opens the
+# modem voice session (SessionAlsaVoice / PAL_STREAM_VOICE_CALL type 14). Without this
+# service bound, DeviceHalAidl "fails open" — logs the string but DROPS the params — so
+# the per-VSID voice session never leaves IN_ACTIVE ("updateCalls CallState: Default")
+# and the modem-anchored voice is never bridged to the codec => silence both ways, even
+# though signaling/VoLTE/codec are all correct. qtiaudiohalvendorextn ships the parser
+# (vendor/qcom/opensource/commonsys/audio/hal_adapter); DeviceHalAidl only binds it when
+# ro.audio.ihaladaptervendorextension_enabled=true. Stock RedMagicOS sets both; the
+# NX809J tree never inherited audio_system_product.mk. See volte_call_audio_2026-06-16.
+PRODUCT_PACKAGES += \
+    qtiaudiohalvendorextn
+
+PRODUCT_SYSTEM_EXT_PROPERTIES += \
+    ro.audio.ihaladaptervendorextension_enabled=true
+
 # IR remote: the HAL ships in the stock vendor (vendor.ir-default +
 # consumerir.zte.so). We ship only the consumerir feature permission so a
 # user-installed IR app works; the proprietary KooKong app is NOT bundled
@@ -133,6 +153,13 @@ PRODUCT_COPY_FILES += \
 # staging-injected during bring-up; now in source for permanence.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/disable-ssdaemon.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-ssdaemon.rc
+
+# Disable two crash-looping stock-vendor HALs that drive a RescueParty flag-reset
+# storm + battery drain: the eSE secure_element HAL (status=-3, can't init on this
+# port; also flips sys.init.updatable_crashing on a loop) and the unused China IFAA
+# biometric-pay HAL. /product/etc/init is parsed after /vendor so the stops win.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/init/disable-crashloop-hals.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-crashloop-hals.rc
 
 # Double-tap-to-wake (WORKING). The ZTE/Synaptics zte_tpd driver detects the
 # double-tap in low-power gesture mode and, instead of an input KEY_WAKEUP, fires
