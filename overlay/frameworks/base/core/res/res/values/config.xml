@@ -44,6 +44,13 @@
     <!-- Telephony -->
     <bool name="config_voice_capable">true</bool>
     <bool name="config_sms_capable">true</bool>
+    <!-- SIM hot-swap. The RIL/modem detects insert/remove correctly (CARDSTATE_PRESENT/ABSENT
+         + iccid read fire, num_apps=1 on re-insert), but AOSP defaults config_hotswapCapable=false,
+         so UiccSlot.onIccSwap() prompts a REBOOT instead of completing the SIM-ready→subscription→
+         registration flow → calls dead until reboot. Stock RedMagicOS sets it true. Diagnosed live
+         2026-06-22 (log: "onIccSwap: isHotSwapSupported is false, prompt for rebooting" on both the
+         remove AND the re-insert). Setting true = framework hot-swaps the SIM with no reboot. -->
+    <bool name="config_hotswapCapable">true</bool>
 
     <!-- USB -->
     <bool name="config_hasUsbAccessory">true</bool>
