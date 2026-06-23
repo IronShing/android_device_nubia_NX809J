@@ -291,6 +291,10 @@ PRODUCT_COPY_FILES += \
 # firmware_pcf.mk is auto-generated; re-run closure.py to refresh.
 include $(LOCAL_PATH)/firmware_pcf.mk
 
+# Phase A native-enforcing: build the 9 QTI HAL services into vendor.img.
+include $(LOCAL_PATH)/vendor_hals.mk
+
+
 # Overlays — see the desktop-mode block above. The framework-res overlay is now a
 # static PRODUCT_PACKAGE_OVERLAYS (baked into framework-res.apk in system), replacing
 # the former FrameworksResNX809J RRO, which was device_specific → /odm/overlay and so
