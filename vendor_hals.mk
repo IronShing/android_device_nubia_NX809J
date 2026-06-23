@@ -24,3 +24,10 @@ PRODUCT_PACKAGES += \
 #   vendor.qti.hardware.display.allocator-service
 #   vendor.qti.hardware.display.composer-service
 #   vendor.qti.hardware.display.demura-service
+
+# Display HAL version pin: the qcom-caf/sm8750 composer source selects its
+# composer3 AIDL version via SOONG_CONFIG_qtidisplay_composer_version, normally
+# set by display-product.mk (which this device doesn't inherit). Unset -> no
+# version #define/lib -> composer falls through to an unimplemented V4 path
+# (abstract AidlComposerClient). v3_3 is the source's max (COMPOSER3_V3 + aiqe-V2).
+$(call soong_config_set,qtidisplay,composer_version,v3_3)
