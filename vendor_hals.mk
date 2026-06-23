@@ -13,7 +13,10 @@ PRODUCT_PACKAGES += \
     android.hardware.usb-service.qti \
     audiohalservice.qti \
     vendor.qti.hardware.memtrack-service \
-    vendor.qti.hardware.vibrator.service
+    vendor.qti.hardware.vibrator.service \
+    vendor.qti.hardware.display.allocator-service \
+    vendor.qti.hardware.display.composer-service \
+    vendor.qti.hardware.display.demura-service
 
 # PENDING — the 3 DISPLAY HALs (composer/allocator/demura) do NOT source-build:
 # qcom-caf/sm8750 display source is version-skewed (graphics.composer3 V3<->V4
