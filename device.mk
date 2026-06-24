@@ -438,3 +438,8 @@ PRODUCT_PACKAGES += \
 $(call soong_config_set,lineage_health,charging_control_charging_path,/sys/class/qcom-battery/charging_enabled)
 $(call soong_config_set,lineage_health,charging_control_charging_enabled,1)
 $(call soong_config_set,lineage_health,charging_control_charging_disabled,0)
+
+# Deferred SELinux enforcing: flip to Enforcing at boot_completed (boots permissive
+# so the init-domain security HALs connect, then enforces). See enforcing/README.md.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/rootdir/etc/init/nx809j-enforce.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/nx809j-enforce.rc

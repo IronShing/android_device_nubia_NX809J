@@ -1,0 +1,7 @@
+# Native SELinux enforcing (deferred). The stock vendor's security HALs (onekeymint,
+# gatekeeper) run in the init domain, which makes FIRST-STAGE enforcing unstable.
+# Boot PERMISSIVE (androidboot.selinux=permissive) so those HALs + keystore2 connect
+# cleanly, then init flips to Enforcing once boot completes. The native vendor cil
+# rules (device/nubia/NX809J/enforcing) are already loaded; this just engages them.
+on property:sys.boot_completed=1
+    write /sys/fs/selinux/enforce 1
