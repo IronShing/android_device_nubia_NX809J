@@ -1,0 +1,47 @@
+diff --git a/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java b/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java
+index 3ff0bf3..c1abb1f 100644
+--- a/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java
++++ b/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java
+@@ -53,6 +53,7 @@ import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_N
+ import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_VOICE_INTERACTION_WINDOW_SHOWING;
+ import static com.android.wm.shell.Flags.enableBubbleBar;
+ import static com.android.wm.shell.Flags.enableBubbleBarOnPhones;
++import static com.android.wm.shell.Flags.enableTaskbarOnPhones;
+ import static com.android.wm.shell.Flags.enableTinyTaskbar;
+ 
+ import static java.lang.invoke.MethodHandles.Lookup.PROTECTED;
+@@ -677,7 +678,7 @@ public class TaskbarActivityContext extends BaseTaskbarContext {
+ 
+     /** Returns {@code true} iff a tiny version of taskbar is shown on phone. */
+     public boolean isTinyTaskbar() {
+-        return enableTinyTaskbar() && mDeviceProfile.getDeviceProperties().isPhone() && mDeviceProfile.isTaskbarPresent;
++        return (enableTinyTaskbar() || enableTaskbarOnPhones()) && mDeviceProfile.getDeviceProperties().isPhone() && mDeviceProfile.isTaskbarPresent;
+     }
+ 
+     public boolean isBubbleBarOnPhone() {
+diff --git a/src/com/android/launcher3/DeviceProfile.java b/src/com/android/launcher3/DeviceProfile.java
+index ce25f40..829187b 100644
+--- a/src/com/android/launcher3/DeviceProfile.java
++++ b/src/com/android/launcher3/DeviceProfile.java
+@@ -31,6 +31,7 @@ import static com.android.launcher3.testing.shared.ResourceUtils.pxFromDp;
+ import static com.android.launcher3.util.OverviewReleaseFlags.enableGridOnlyOverview;
+ import static com.android.wm.shell.Flags.enableBubbleBar;
+ import static com.android.wm.shell.Flags.enableBubbleBarOnPhones;
++import static com.android.wm.shell.Flags.enableTaskbarOnPhones;
+ import static com.android.wm.shell.Flags.enableTinyTaskbar;
+ 
+ import static java.lang.Math.max;
+@@ -282,7 +283,12 @@ public class DeviceProfile {
+         mIsScalableGrid = inv.isScalable && !isVerticalBarLayout() && !isExternalDisplay;
+         // Determine device posture.
+         mInfo = info;
+-        boolean taskbarOrBubbleBarOnPhones = enableTinyTaskbar()
++        // NX809J: enableTinyTaskbar() is fused OFF in this build, but its sibling
++        // enableTaskbarOnPhones() is ENABLED (and SystemUI's navbar already uses it).
++        // Honor it too, so phones with desktop windowing (config_canInternalDisplayHostDesktops)
++        // get a real taskbar (with app drawer) instead of nav-only — required for desktop
++        // mode to launch apps.
++        boolean taskbarOrBubbleBarOnPhones = enableTinyTaskbar() || enableTaskbarOnPhones()
+                 || (enableBubbleBar() && enableBubbleBarOnPhones());
+         isTaskbarPresent =
+                 (mDeviceProperties.isTablet() || (taskbarOrBubbleBarOnPhones && isGestureMode))
