@@ -69,6 +69,15 @@ on boot
     chown system system /sys/class/qcom-battery/battery_charging_enabled
     chmod 0664 /sys/class/qcom-battery/battery_charging_enabled
 
+    # Charging Control LIMIT mode (charge-threshold slider). The battery driver's
+    # start/stop threshold nodes are root-owned (-rw-r--r--); the lineage health HAL
+    # runs as system and writes limit.min->start, limit.max->stop. chown so its writes
+    # take. Wired via device.mk charging_control_limit_{start,stop}_path + supports_limit.
+    chown system system /sys/class/power_supply/battery/charge_control_start_threshold
+    chmod 0664 /sys/class/power_supply/battery/charge_control_start_threshold
+    chown system system /sys/class/power_supply/battery/charge_control_end_threshold
+    chmod 0664 /sys/class/power_supply/battery/charge_control_end_threshold
+
     # Magic Slider (gpio-keys_nubia, SW_PEN_INSERTED)
     # /dev/input/event1
     # Mode config: settings put system fourth_physical_key_function_value <MODE>

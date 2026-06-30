@@ -170,3 +170,6 @@
 (allow system_suspend sysfs (file (open read)))
 (allow zygote vendor_file (file (execute getattr map open read)))
 ;; (above: complete first-stage service_manager-add + file denials, logcat-sourced)
+;; --- Charging Control LIMIT mode: HAL writes charge threshold nodes ---
+(allow hal_lineage_health_default vendor_sysfs_battery_supply (file (open read write getattr)))
+(allow hal_lineage_health_default vendor_sysfs_battery_supply (dir (search read open getattr)))

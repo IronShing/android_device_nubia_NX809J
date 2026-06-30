@@ -438,6 +438,15 @@ PRODUCT_PACKAGES += \
 $(call soong_config_set,lineage_health,charging_control_charging_path,/sys/class/qcom-battery/charging_enabled)
 $(call soong_config_set,lineage_health,charging_control_charging_enabled,1)
 $(call soong_config_set,lineage_health,charging_control_charging_disabled,0)
+# LIMIT mode (charge-threshold slider). The battery driver exposes WRITABLE start/stop
+# threshold nodes (verified: echo 70/80 sticks). Wiring these + supports_limit=true
+# makes the LineageOS Charging Control "Limit" mode + % slider appear (allowFineGrainedSettings
+# requires LIMIT or TOGGLE in the HAL's getSupportedMode bitmask). HAL writes limit.min->start,
+# limit.max->stop. Nodes are root-owned by default -> init chowns them to system (the HAL's
+# uid) in init.NX809J.rc, same pattern as charging_enabled.
+$(call soong_config_set_bool,lineage_health,charging_control_supports_limit,true)
+$(call soong_config_set,lineage_health,charging_control_limit_start_path,/sys/class/power_supply/battery/charge_control_start_threshold)
+$(call soong_config_set,lineage_health,charging_control_limit_stop_path,/sys/class/power_supply/battery/charge_control_end_threshold)
 
 # Deferred SELinux enforcing: flip to Enforcing at boot_completed (boots permissive
 # so the init-domain security HALs connect, then enforces). See enforcing/README.md.

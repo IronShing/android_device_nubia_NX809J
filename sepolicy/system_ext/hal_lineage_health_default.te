@@ -44,3 +44,4 @@ allow hal_lineage_health_default sysfs_batt_charge_control:file rw_file_perms;
 # public sysfs_type attribute — search-only, the narrowest system-nameable handle
 # on a vendor-labeled dir. (verified: only this HAL touches charging_enabled.)
 allow hal_lineage_health_default sysfs_type:dir search;
+
