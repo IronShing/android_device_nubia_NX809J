@@ -189,6 +189,50 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD += \
     phy-msm-ssusb-qmp.ko \
     phy-generic.ko \
     dwc3-msm.ko
+
+# Recovery DISPLAY fix (2026-06-30): like the USB chain above, the first-stage
+# modules.load omits the QTI display driver chain (loaded in 2nd stage from
+# vendor_dlkm). RECOVERY has no 2nd stage, so msm_drm + helpers never load -> no
+# DRM framebuffer -> minui can't render -> recovery is HEADLESS (stuck at the
+# bootloader splash, adb works but no UI). Append msm_drm's full dependency
+# closure in topological order (deps first, msm_drm last); the dwc3/repeater/
+# redriver/wcd_usbss deps msm_drm shares are already loaded by the USB block above.
+# pinctrl-spmi-gpio/mpp FIRST: the DSI panel reset pin (sde-disp0-rst, on PMIC
+# pinctrl@8800) is a DEVICE-TREE phandle supplier, NOT a symbol dep, so it's not in
+# msm_drm's modules.dep closure. Without it the DSI display + mdss_mdp defer-probe
+# forever (recovery ramoops: "dsi-display-primary deferred: wait for supplier
+# pinctrl@8800/sde-disp0-rst" + "mdss_mdp not ready") -> headless recovery.
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD += \
+    pinctrl-spmi-gpio.ko \
+    pinctrl-spmi-mpp.ko \
+    nvmem_qfprom.ko \
+    drm_display_helper.ko \
+    ipclite.ko \
+    qcom_smd.ko \
+    qcom_glink.ko \
+    qcom_glink_smem.ko \
+    rproc_qcom_common.ko \
+    msm_hw_fence.ko \
+    synx-driver.ko \
+    qcom_va_minidump.ko \
+    sync_fence.ko \
+    msm_hfi_core.ko \
+    msm_ext_display.ko \
+    qmi_helpers.ko \
+    qcom_pdr_msg.ko \
+    pdr_interface.ko \
+    qti_pmic_glink.ko \
+    altmode-glink.ko \
+    gh_irq_lend.ko \
+    hdcp_qseecom_dlkm.ko \
+    panel_event_notifier.ko \
+    msm_drm.ko \
+    qcom_sdei.ko \
+    zte_tpd.ko
+# zte_tpd LAST: the touchscreen driver (synaptics_tcm) — needed for TOUCH in the
+# recovery UI (without it the menu renders but is volume-key-only). Depends on
+# panel_event_notifier (loaded just above) + kmparam (base list), so it must come
+# after the display block.
 TARGET_HAS_GENERIC_KERNEL_IMAGE_HEADERS := true
 
 # Metadata
