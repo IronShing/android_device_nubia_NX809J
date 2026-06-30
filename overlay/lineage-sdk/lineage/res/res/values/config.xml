@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Device overlay for org.lineageos.platform-res (lineage-sdk).
+     Bakes Charging Control to default to LIMIT mode @ 80%, enabled out of the box,
+     so the battery caps without the user having to switch out of the (useless-here)
+     Automatic mode. Automatic only delays charge to finish by the next alarm; this
+     device's firmware ignores the threshold nodes, so only the Toggle/Limit path works.
+-->
+<resources>
+    <!-- Enable Charging Control by default -->
+    <bool name="config_chargingControlEnabled">true</bool>
+
+    <!-- Default mode: 3 = LIMIT (1 = Auto/alarm, 2 = Manual/schedule) -->
+    <integer name="config_defaultChargingControlMode">3</integer>
+
+    <!-- Default stop-charging limit (percent, 70-100) -->
+    <integer name="config_defaultChargingControlLimit">80</integer>
+</resources>
