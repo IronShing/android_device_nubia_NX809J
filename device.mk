@@ -438,15 +438,20 @@ PRODUCT_PACKAGES += \
 $(call soong_config_set,lineage_health,charging_control_charging_path,/sys/class/qcom-battery/charging_enabled)
 $(call soong_config_set,lineage_health,charging_control_charging_enabled,1)
 $(call soong_config_set,lineage_health,charging_control_charging_disabled,0)
-# LIMIT mode (charge-threshold slider). The battery driver exposes WRITABLE start/stop
-# threshold nodes (verified: echo 70/80 sticks). Wiring these + supports_limit=true
-# makes the LineageOS Charging Control "Limit" mode + % slider appear (allowFineGrainedSettings
-# requires LIMIT or TOGGLE in the HAL's getSupportedMode bitmask). HAL writes limit.min->start,
-# limit.max->stop. Nodes are root-owned by default -> init chowns them to system (the HAL's
-# uid) in init.NX809J.rc, same pattern as charging_enabled.
-$(call soong_config_set_bool,lineage_health,charging_control_supports_limit,true)
-$(call soong_config_set,lineage_health,charging_control_limit_start_path,/sys/class/power_supply/battery/charge_control_start_threshold)
-$(call soong_config_set,lineage_health,charging_control_limit_stop_path,/sys/class/power_supply/battery/charge_control_end_threshold)
+# Charge-limit % slider + enforcement. IMPORTANT: this device's charger FIRMWARE
+# IGNORES the kernel charge_control_{start,end}_threshold nodes (writable but cosmetic
+# — verified: battery 95%, end_threshold=70, even charge_control_en=1, still CHARGING).
+# So the HAL's threshold-based LIMIT mode does NOT work here. The only mechanism that
+# actually stops charging is the charging_enabled TOGGLE (verified: 0 -> status DISCHARGING).
+# Therefore: advertise TOGGLE only (supports_toggle). The framework's Toggle ccprovider
+# handles MODE_LIMIT by polling battery level and toggling charging_enabled around the
+# target % (Toggle.onBatteryChanged -> setChargingEnabled). The % slider still appears
+# because allowFineGrainedSettings() needs TOGGLE *or* LIMIT. When the limit holds,
+# status goes plugged+discharging -> SystemUI battery-defender (shield) engages.
+# (supports_limit + threshold paths were tried and DROPPED: Limit ccprovider has priority
+# over Toggle but only writes the firmware-ignored thresholds -> slider showed but limit
+# never enforced + no shield.)
+$(call soong_config_set_bool,lineage_health,charging_control_supports_toggle,true)
 
 # Deferred SELinux enforcing: flip to Enforcing at boot_completed (boots permissive
 # so the init-domain security HALs connect, then enforces). See enforcing/README.md.
