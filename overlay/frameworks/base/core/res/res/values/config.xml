@@ -65,4 +65,42 @@
     <bool name="config_isDesktopModeSupported">true</bool>
     <bool name="config_canInternalDisplayHostDesktops">true</bool>
     <bool name="config_isDesktopModeDevOptionSupported">true</bool>
+
+    <!-- Auto-brightness curve. config_automatic_brightness_available is true and the
+         stk3a7x light sensor works, but neither the DDC XML (/vendor/etc/displayconfig/
+         display_id_*.xml has <screenBrightnessMap> but NO <autoBrightness> block) nor
+         this overlay supplied a lux->brightness curve, so DisplayPowerController showed
+         mBrightnessLevelsMap={} / mLightSensor=null and auto-brightness did nothing.
+         This is the nits-based curve (device uses DDC nits mapping); nits stay within the
+         panel range 0.2289..782.43. config_autoBrightnessDisplayValuesNits must be exactly
+         one entry LONGER than config_autoBrightnessLevels (N lux levels -> N+1 nits). -->
+    <integer-array name="config_autoBrightnessLevels">
+        <item>1</item>
+        <item>3</item>
+        <item>8</item>
+        <item>15</item>
+        <item>30</item>
+        <item>60</item>
+        <item>120</item>
+        <item>240</item>
+        <item>500</item>
+        <item>1000</item>
+        <item>2500</item>
+        <item>6000</item>
+    </integer-array>
+    <array name="config_autoBrightnessDisplayValuesNits">
+        <item>2.0</item>
+        <item>5.0</item>
+        <item>10.0</item>
+        <item>18.0</item>
+        <item>30.0</item>
+        <item>50.0</item>
+        <item>80.0</item>
+        <item>130.0</item>
+        <item>200.0</item>
+        <item>300.0</item>
+        <item>430.0</item>
+        <item>600.0</item>
+        <item>780.0</item>
+    </array>
 </resources>
