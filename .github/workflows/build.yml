@@ -1,20 +1,37 @@
 name: Build NX809J
 
-# Self-hosted CI for the RedMagic 11 Pro (NX809J) LineageOS port.
+# Self-hosted CI for the RedMagic 11 Pro (NX809J) LineageOS 23.2 port.
 # Runs on a self-hosted runner on the build machine (where the ~268 GB tree lives) —
 # GitHub-hosted runners can't build LOS (disk/time). Operates on the EXISTING tree at
-# $LINEAGE; it does NOT git-checkout this repo (no actions/checkout step on purpose).
-# Trigger: Actions tab -> Build NX809J -> Run workflow.
+# $LINEAGE; it does NOT git-checkout this repo (no actions/checkout on purpose).
+#
+# HONEST SCOPE (see .github/README-CI.md "Audit — reproducible vs manual"):
+#   FROM SOURCE (this workflow, reproducible): system, system_ext, product, boot chain
+#     (boot built from the prebuilt WildKernels kernel), target-files, OTA.
+#   NOT FROM SOURCE (static hand-built inputs baked into the super):
+#     - vendor: stock B13MR vendor + enforcing CIL + ultrawide .so patch  (uw_super/vendor_uw.img)
+#     - odm: curated                                                      (uw_super/odm_uw.img)
+#     - vendor_dlkm + system_dlkm: stock                                  (ci_inputs/*.img)
+#     - kernel: WildKernels OP-WILD KSU+SUSFS (Coding-BR Actions, OP15), camera-patched,
+#       committed as a prebuilt in the kernel repo — synced, not rebuilt here.
 
 on:
   workflow_dispatch:
     inputs:
       reposync:
-        description: "repo sync before building (slow; off = use tree as-is)"
+        description: "repo sync manifest + local_manifests before building (slow)"
+        type: boolean
+        default: false
+      dist:
+        description: "build target-files/OTA via 'm dist' (required for release-keys signing)"
+        type: boolean
+        default: true
+      release_keys:
+        description: "re-sign with release keys from vendor/lineage-priv/keys (needs 'dist')"
         type: boolean
         default: false
       target:
-        description: "m target (empty = full ROM; e.g. 'productimage systemextimage' for incremental)"
+        description: "override m target (empty = full build; e.g. 'systemimage productimage')"
         type: string
         default: ""
 
@@ -25,56 +42,107 @@ concurrency:
 jobs:
   build:
     runs-on: [self-hosted, nx809j]
-    timeout-minutes: 720
+    timeout-minutes: 900
     env:
-      LINEAGE: ${{ vars.LINEAGE_TREE || '/var/home/beast/android/lineage' }}
-      SUPER_SCRIPT: ${{ vars.SUPER_SCRIPT || '/var/home/beast/lineage-scratch/build_super_v15_los_restore.sh' }}
-      SUPER_IMG: ${{ vars.SUPER_IMG || '/var/home/beast/lineage-scratch/super_v15/super_v15_los.img' }}
+      LINEAGE:    ${{ vars.LINEAGE_TREE  || '/var/home/beast/android/lineage' }}
+      SUPER_SCRIPT: ${{ vars.SUPER_SCRIPT || format('{0}/device/nubia/NX809J/scripts/build_super_ci.sh', vars.LINEAGE_TREE || '/var/home/beast/android/lineage') }}
+      KEYS_DIR:   ${{ vars.KEYS_DIR || 'vendor/lineage-priv/keys' }}
+      LUNCH:      ${{ vars.LUNCH || 'lineage_NX809J-bp4a-userdebug' }}
+      DEVICE:     NX809J
       LC_ALL: C
 
     steps:
       - name: Environment
         run: |
-          echo "tree=$LINEAGE"; df -h "$LINEAGE" | tail -1; free -g | sed -n '1,2p'
+          echo "tree=$LINEAGE  lunch=$LUNCH"
+          df -h "$LINEAGE" | tail -1; free -g | sed -n '1,2p'; nproc
 
       - name: Restore out-of-tree patches (frameworks/base, vendor/lineage, CarrierConfig)
-        run: bash "$LINEAGE/device/nubia/NX809J/patches/apply-patches.sh" || true
+        run: bash "$LINEAGE/device/nubia/$DEVICE/patches/apply-patches.sh" || true
 
       - name: repo sync (optional)
         if: ${{ inputs.reposync }}
         run: |
           cd "$LINEAGE"
-          repo sync -j8 -c --no-clone-bundle --current-branch
-          # re-apply patches after a sync (it can reset the shared repos)
-          bash device/nubia/NX809J/patches/apply-patches.sh || true
+          repo sync -j"$(nproc)" -c --no-clone-bundle --current-branch --force-sync
+          # local_manifests (device/kernel/vendor + IronShing forks) are honored by repo automatically.
+          bash device/nubia/$DEVICE/patches/apply-patches.sh || true   # re-apply after sync resets shared repos
 
-      - name: Build
+      - name: Build partitions
         run: |
           cd "$LINEAGE"
+          set -o pipefail
           source build/envsetup.sh
-          unset -f grep || true              # ugrep wrapper breaks soong dumpvars
-          lunch lineage_NX809J-bp4a-userdebug
-          m -j6 ${{ inputs.target }}
+          unset -f grep egrep fgrep ugrep 2>/dev/null || true   # ugrep wrapper breaks soong dumpvars
+          lunch "$LUNCH"                                         # never pipe (subshell drops TARGET_RELEASE)
+          MT="${{ inputs.target }}"
+          if [ -z "$MT" ] && [ "${{ inputs.dist }}" = "true" ]; then MT="dist"; fi
+          # sandbox-off + nice + -j6 (higher -j OOMs the box)
+          nice -n 19 ionice -c3 env NINJA_HIGHMEM_NUM_JOBS=2 \
+            m -j6 $MT 2>&1 | tail -n 400
+          echo "OUT=$LINEAGE/out/target/product/$DEVICE" >> "$GITHUB_ENV"
+          echo "DIST=$LINEAGE/out/dist" >> "$GITHUB_ENV"
+          echo "HOSTBIN=$LINEAGE/out/host/linux-x86/bin" >> "$GITHUB_ENV"
 
-      - name: Assemble super (LOS partitions + stock vendor)
-        run: bash "$SUPER_SCRIPT"
+      - name: Sign with release keys (optional)
+        id: sign
+        if: ${{ inputs.release_keys }}
+        run: |
+          cd "$LINEAGE"
+          TF=$(ls -t "$DIST"/*-target_files-*.zip 2>/dev/null | head -1)
+          [ -n "$TF" ] || { echo "::error::release_keys set but no target-files zip (enable 'dist')"; exit 1; }
+          [ -d "$KEYS_DIR" ] || { echo "::error::$KEYS_DIR not present"; exit 1; }
+          export PATH="$HOSTBIN:$PATH"
+          SIGNED="$RUNNER_TEMP/signed-target_files.zip"
+          # re-sign APKs/APEX with release keys (AVB is bypassed by the patched ABL, so vbmeta keys are moot here)
+          sign_target_files_apks -o -d "$KEYS_DIR" "$TF" "$SIGNED"
+          img_from_target_files "$SIGNED" "$RUNNER_TEMP/signed-img.zip"
+          SDIR="$RUNNER_TEMP/signed"; rm -rf "$SDIR"; mkdir -p "$SDIR"
+          ( cd "$SDIR" && unzip -o "$RUNNER_TEMP/signed-img.zip" system.img system_ext.img product.img )
+          # hand these signed source partitions to the super assembler
+          echo "SYS=$SDIR/system.img"        >> "$GITHUB_ENV"
+          echo "SEXT=$SDIR/system_ext.img"   >> "$GITHUB_ENV"
+          echo "PROD=$SDIR/product.img"      >> "$GITHUB_ENV"
+          # also keep a signed OTA for the release
+          ota_from_target_files -k "$KEYS_DIR/releasekey" "$SIGNED" "$RUNNER_TEMP/$DEVICE-ota-signed.zip" || true
 
-      - name: Collect + package artifacts
+      - name: Assemble super (source system/system_ext/product + stock vendor/odm/dlkm)
+        run: |
+          cd "$LINEAGE"
+          OUTIMG="$RUNNER_TEMP/super.img" OUT="$OUT" bash "$SUPER_SCRIPT"
+          echo "SUPER_IMG=$RUNNER_TEMP/super.img" >> "$GITHUB_ENV"
+
+      - name: Collect boot chain + package artifacts
         id: pkg
         run: |
-          OUT="$LINEAGE/out/target/product/NX809J"
+          # Boot chain: built from the prebuilt WildKernels kernel (synced via the kernel repo).
+          # Override BOOTCHAIN_DIR (repo var) if you stage magisk-patched init_boot elsewhere.
+          BC="${{ vars.BOOTCHAIN_DIR || '' }}"; [ -z "$BC" ] && BC="$OUT"
           DST="$RUNNER_TEMP/nx809j-out"; rm -rf "$DST"; mkdir -p "$DST"
-          # boot chain images are small -> upload directly
-          for i in boot init_boot vendor_boot dtbo vbmeta vbmeta_system; do
-            [ -f "$OUT/$i.img" ] && cp "$OUT/$i.img" "$DST/"
+          for i in boot init_boot vendor_boot dtbo vbmeta vbmeta_system recovery; do
+            [ -f "$BC/$i.img" ] && cp "$BC/$i.img" "$DST/"
           done
-          # super is ~19 GB raw -> zstd + split under GitHub's 2 GB/file release limit
-          zstd -15 -T0 -f -o "$DST/super.img.zst" "$SUPER_IMG"
+          cp "$SUPER_IMG" "$DST/super.img"
+          [ -f "$RUNNER_TEMP/$DEVICE-ota-signed.zip" ] && cp "$RUNNER_TEMP/$DEVICE-ota-signed.zip" "$DST/"
+          # MD5SUMS (matches the shipped release format)
+          ( cd "$DST" && md5sum super.img *.img 2>/dev/null > MD5SUMS.txt )
+          # Changelog from the device-tree git log since the last tag
+          TAG="nx809j-$(date +%Y%m%d-%H%M)"
+          {
+            echo "# NX809J LineageOS 23.2 — build $TAG"
+            echo; echo "Lunch: $LUNCH  |  release-keys: ${{ inputs.release_keys }}"
+            echo "Super: source system/system_ext/product + stock B13MR vendor(enf+ultrawide) + curated odm + stock dlkm."
+            echo "Boot: prebuilt WildKernels KSU+SUSFS kernel (camera-patched), synced not rebuilt."
+            echo; echo "## device tree changes"
+            git -C "$LINEAGE/device/nubia/$DEVICE" log --oneline -20 2>/dev/null | sed 's/^/- /'
+          } > "$DST/CHANGELOG.md"
+          # super is big (raw ~19 GB) -> zstd + split under GitHub's 2 GB/file release cap
+          zstd -15 -T0 -f -o "$DST/super.img.zst" "$DST/super.img" && rm -f "$DST/super.img"
           split -b 1900M -d -a 2 "$DST/super.img.zst" "$DST/super.img.zst.part" && rm -f "$DST/super.img.zst"
           ( cd "$DST" && sha256sum * > SHA256SUMS )
           ls -lh "$DST"
-          echo "dir=$DST" >> "$GITHUB_OUTPUT"
-          echo "tag=nx809j-$(date +%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
+          echo "dir=$DST"  >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"  >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
         env:
@@ -83,4 +151,4 @@ jobs:
           gh release create "${{ steps.pkg.outputs.tag }}" "${{ steps.pkg.outputs.dir }}"/* \
             --repo "${{ github.repository }}" \
             --title "NX809J ${{ steps.pkg.outputs.tag }}" \
-            --notes $'Automated self-hosted build.\n\nReassemble super: `cat super.img.zst.part* | zstd -d -o super.img`\nFlash: EDL super + boot chain — see SOAK_CHECKLIST.md.'
+            --notes $'Automated self-hosted LineageOS 23.2 build.\n\nReassemble super: `cat super.img.zst.part* | zstd -d -o super.img`\nVerify: `md5sum -c MD5SUMS.txt` (after reassembling super).\nFlash: EDL super + boot chain — see INSTALL/CHANGELOG.\n\nSuper is a source+stock-vendor hybrid; boot is the prebuilt WildKernels kernel. See README-CI.md.'
