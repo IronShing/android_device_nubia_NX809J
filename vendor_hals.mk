@@ -13,24 +13,28 @@ PRODUCT_PACKAGES += \
     android.hardware.usb-service.qti \
     audiohalservice.qti \
     vendor.qti.hardware.memtrack-service \
-    vendor.qti.hardware.vibrator.service \
+    vendor.qti.hardware.vibrator.service
+
+# DISPLAY HALs — use the STOCK PREBUILT @4 stack (not source).
+# The qcom-caf/sm8750 composer source maxes out at composer3 @3 (v3_3: its V4 path
+# is an unimplemented abstract AidlComposerClient), and Android 16's framework compat
+# matrix (FCM 202504) requires composer3 >= @4. So a clean m dist source-build fails
+# check_vintf: "composer3@3 is deprecated; requires at least 4". The stock prebuilt
+# composer/allocator/demura advertise @4 and match the validated super runtime, so we
+# ship those (prebuilt binaries + init.rc + @4 vintf fragment + coherent QTI lib stack,
+# all defined in vendor/nubia/NX809J/Android.bp). The prebuilts live in the nubia soong
+# namespace, so their lib names don't collide with the qcom-caf source modules.
+PRODUCT_PACKAGES += \
     vendor.qti.hardware.display.allocator-service \
     vendor.qti.hardware.display.composer-service \
     vendor.qti.hardware.display.demura-service
 
-# PENDING — the 3 DISPLAY HALs (composer/allocator/demura) do NOT source-build:
-# qcom-caf/sm8750 display source is version-skewed (graphics.composer3 V3<->V4
-# abstract-class mismatch + undefined sdm::IsExtendedRange). The display lib stack
-# is tightly version-coupled (~15 QTI display AIDL/HIDL libs), so a prebuilt
-# composer can't mix with source graphics.composer3-V4. Resolve via EITHER patch
-# the CAF display source to V4, OR prebuilt the whole coherent stock display stack.
-#   vendor.qti.hardware.display.allocator-service
-#   vendor.qti.hardware.display.composer-service
-#   vendor.qti.hardware.display.demura-service
-
-# Display HAL version pin: the qcom-caf/sm8750 composer source selects its
-# composer3 AIDL version via SOONG_CONFIG_qtidisplay_composer_version, normally
-# set by display-product.mk (which this device doesn't inherit). Unset -> no
-# version #define/lib -> composer falls through to an unimplemented V4 path
-# (abstract AidlComposerClient). v3_3 is the source's max (COMPOSER3_V3 + aiqe-V2).
-$(call soong_config_set,qtidisplay,composer_version,v3_3)
+# The composer/allocator/demura AIDL+HIDL interface libs (composer3-V4-ndk, aiqe-V3-ndk,
+# config-V13-ndk, mapper@*, mapperextensions@*, etc.) are ABI-versioned and BUILT FROM
+# SOURCE (commonsys-intf/display + hardware/interfaces) for both system+vendor variants,
+# so we do NOT prebuilt them (a vendor-only prebuilt collides: "partition is different").
+# The QTI implementation libs (libsdmcore/utils/client, libgralloc.qti, ...) already have
+# prebuilt entries in vendor/nubia/NX809J/Android.bp and install via the normal blob path.
+#
+# NOTE: no $(call soong_config_set,qtidisplay,composer_version,...) — we no longer
+# source-build the composer, so the version pin is intentionally gone.

@@ -457,3 +457,15 @@ $(call soong_config_set_bool,lineage_health,charging_control_supports_toggle,tru
 # so the init-domain security HALs connect, then enforces). See enforcing/README.md.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/rootdir/etc/init/nx809j-enforce.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/nx809j-enforce.rc
+
+# Do not enforce kernel VINTF requirements at check_vintf time. We ship a PREBUILT
+# GKI kernel (WildKernels OP-WILD, 6.12.23) we don't compile, and its config has
+# CONFIG_SYSVIPC=y, which the Android 16 framework matrix (FCM 202504) requires =n.
+# We can't reconfigure a prebuilt kernel, so drop the --kernel arg from checkvintf
+# (build/make/core/Makefile:5634). Without this, `m dist` fails at 99% in the
+# check_vintf_compatible packaging step:
+#   "No compatible kernel requirement found (kernel FCM version = 202504)
+#    ... For config CONFIG_SYSVIPC, value = y but required n"
+# Only the dist/OTA path runs this check (incremental image builds don't), so it
+# surfaces only on the release build. Runtime VINTF is unaffected.
+PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false

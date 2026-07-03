@@ -212,6 +212,38 @@
         </interface>
     </hal>
     <hal format="aidl" optional="true">
+        <name>vendor.qti.hardware.display.aiqe</name>
+        <version>3</version>
+        <interface>
+            <name>IDisplayAiqe</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    <hal format="aidl" optional="true">
+        <name>vendor.qti.hardware.display.color</name>
+        <version>1</version>
+        <interface>
+            <name>IDisplayColor</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    <hal format="aidl" optional="true">
+        <name>vendor.qti.hardware.display.config</name>
+        <version>13</version>
+        <interface>
+            <name>IDisplayConfig</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    <hal format="aidl" optional="true">
+        <name>vendor.qti.hardware.display.postproc</name>
+        <version>1</version>
+        <interface>
+            <name>IDisplayPostproc</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    <hal format="aidl" optional="true">
         <name>vendor.qti.hardware.display.ztedisp</name>
         <version>1</version>
         <interface>
