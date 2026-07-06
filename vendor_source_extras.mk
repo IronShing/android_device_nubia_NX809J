@@ -22,6 +22,14 @@ PRODUCT_PACKAGES += \
     init.qti.display_boot.sh \
     init.qti.display_boot.rc \
     mapper.qti.xml.nx809j
+
+# POST-BOOT PARITY TODO (non-boot-critical, deferred): 9 secondary HALs/bins have
+# unresolved vendor deps (audit 2026-07-06): boot-control/thermal/SPU-keymint/SPU-weaver
+# need vendor-variant AIDL NDK libs (boot-V1/thermal-V3/sharedsecret-V2/weaver-V2 -- the
+# AOSP source HAS an orphaned vendor-variant install rule, so pull THAT, not a competing
+# prebuilt which collides); cnd/qms/xtra-daemon need libandroid_net.so; test tools
+# (sigma_dut/KmCheckKeybox) need libkeystore-wifi-hidl/libvendorsupport. None block boot
+# (composer -- the boot gate -- is fixed); they degrade thermal/GPS/connectivity post-boot.
 #
 # NOTE: libaudiocorehal.{qti,default} / libpalipcservice / libagmipcservice were tried as
 # SOURCE (hardware/qcom-caf/sm8750/audio) but the AGM aidlconverter fails to compile —
