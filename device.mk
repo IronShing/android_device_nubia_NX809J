@@ -293,6 +293,7 @@ include $(LOCAL_PATH)/firmware_pcf.mk
 
 # Phase A native-enforcing: build the 9 QTI HAL services into vendor.img.
 include $(LOCAL_PATH)/vendor_hals.mk
+include $(LOCAL_PATH)/vendor_source_extras.mk
 
 
 # Overlays — see the desktop-mode block above. The framework-res overlay is now a
