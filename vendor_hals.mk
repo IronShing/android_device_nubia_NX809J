@@ -30,13 +30,14 @@ PRODUCT_PACKAGES += \
 # earlier all-prebuilt trio (prefer:true) stripped allocator/demura's .rc -> composer's
 # display never armed -> boot hang at logo. Requesting the canonical names here: composer
 # resolves to the @4 prebuilt (prefer), allocator/demura resolve to source.
-# allocator/demura = pure source (own .rc+vintf). composer = @4 prefer:true prebuilt +
-# its .rc under a unique filename (init reads every *.rc). NOTE: the @4 composer still
-# needs its stock lib constellation at runtime (config-V13/composer3-V4/...) -- pending.
+# ALL THREE display services = pure source (coherent with the source libsdm* stack, which
+# exports sdm::IsExtendedRange). composer_version=v3_3 pins the source composer to the v3_3
+# AIDL impl (implements getDisplayConfigurations/notifyExpectedPresent) so AidlComposerClient
+# is concrete; without it the source composer is abstract vs composer3-V3 and won't compile.
+$(call soong_config_set,qtidisplay,composer_version,v3_3)
 PRODUCT_PACKAGES += \
     vendor.qti.hardware.display.allocator-service \
     vendor.qti.hardware.display.composer-service \
-    vendor.qti.hardware.display.composer-service.nx809j.rc \
     vendor.qti.hardware.display.demura-service
 
 # The composer/allocator/demura AIDL+HIDL interface libs (composer3-V4-ndk, aiqe-V3-ndk,

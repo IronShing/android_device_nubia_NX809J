@@ -1,34 +1,10 @@
-// ---- NX809J display SERVICES ----
-// allocator + demura: PURE SOURCE (build clean, ship own .rc + vintf).
-// composer: stock @4 prebuilt (prefer:true suppresses the source @2 binary). Source composer
-//   does NOT build in the current tree (AidlComposerClient abstract vs composer3-V3 +
-//   ld.lld undefined sdm::IsExtendedRange in libsdmclient) -- needs the full
-//   device/nubia/NX809J/patches/display-source-build set re-applied (composer_version=v3_3
-//   pin + formats.cpp IsExtendedRange port + prefer:false libsdm*). The @4 prebuilt builds
-//   green but at RUNTIME needs config-V13/composer3-V4/composer3-V1/aiqe-V3/libsdmclient
-//   (stock @4 constellation, not in the source tree) shipped as blobs -- the remaining wall.
-// composer .rc shipped under a UNIQUE filename (init reads every *.rc) to dodge the source
-//   composer's orphaned .rc rule; @4 vintf fragment rides with the prebuilt.
-cc_prebuilt_binary {
-    name: "vendor.qti.hardware.display.composer-service",
-    owner: "nubia",
-    srcs: ["proprietary/vendor/bin/hw/vendor.qti.hardware.display.composer-service"],
-    check_elf_files: false,
-    prefer: true,
-    relative_install_path: "hw",
-    compile_multilib: "64",
-    vintf_fragments: ["proprietary/vendor/etc/vintf/manifest/vendor.qti.hardware.display.composer-service3_v4.xml"],
-    soc_specific: true,
-}
-
-prebuilt_etc {
-    name: "vendor.qti.hardware.display.composer-service.nx809j.rc",
-    owner: "nubia",
-    src: "proprietary/vendor/etc/init/vendor.qti.hardware.display.composer-service.rc",
-    filename: "vendor.qti.hardware.display.composer-service.nx809j.rc",
-    sub_dir: "init",
-    soc_specific: true,
-}
+// ---- NX809J display SERVICES: PURE SOURCE (composer/allocator/demura) ----
+// All three build from hardware/qcom-caf/sm8750/display and ship their own .rc + vintf,
+// coherent with the source libsdm* stack (source libsdmutils exports sdm::IsExtendedRange,
+// GLOBAL DEFAULT). composer_version=v3_3 (vendor_hals.mk) makes the source composer concrete.
+// No composer prebuilt block: the @4 prebuilt is a version island (needs config-V13/
+// composer3-V4 the source tree doesn't build). Source composer emits composer3 @3 (< FCM @4,
+// a check_vintf release-gate warning, not a runtime boot gate).
 
 prebuilt_etc {
     name: "mapper.qti.xml.nx809j",
@@ -40,5 +16,3 @@ prebuilt_etc {
 }
 
 // init.qti.display_boot.sh + .rc: pulled from the sm8750 display source module via
-// vendor_source_extras.mk PRODUCT_PACKAGES.
-
