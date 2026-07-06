@@ -24,9 +24,19 @@ PRODUCT_PACKAGES += \
 # ship those (prebuilt binaries + init.rc + @4 vintf fragment + coherent QTI lib stack,
 # all defined in vendor/nubia/NX809J/Android.bp). The prebuilts live in the nubia soong
 # namespace, so their lib names don't collide with the qcom-caf source modules.
+# NOTE (2026-07-06): allocator + demura build FROM SOURCE (they ship their own init .rc +
+# vintf and their versions satisfy the FCM). ONLY composer is a same-name prefer:true
+# prebuilt in Android.bp (source composer is composer3 @2; Android 16 requires @4). The
+# earlier all-prebuilt trio (prefer:true) stripped allocator/demura's .rc -> composer's
+# display never armed -> boot hang at logo. Requesting the canonical names here: composer
+# resolves to the @4 prebuilt (prefer), allocator/demura resolve to source.
+# allocator/demura = pure source (own .rc+vintf). composer = @4 prefer:true prebuilt +
+# its .rc under a unique filename (init reads every *.rc). NOTE: the @4 composer still
+# needs its stock lib constellation at runtime (config-V13/composer3-V4/...) -- pending.
 PRODUCT_PACKAGES += \
     vendor.qti.hardware.display.allocator-service \
     vendor.qti.hardware.display.composer-service \
+    vendor.qti.hardware.display.composer-service.nx809j.rc \
     vendor.qti.hardware.display.demura-service
 
 # The composer/allocator/demura AIDL+HIDL interface libs (composer3-V4-ndk, aiqe-V3-ndk,
