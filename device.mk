@@ -116,6 +116,22 @@ PRODUCT_PACKAGES += \
 PRODUCT_SYSTEM_EXT_PROPERTIES += \
     ro.audio.ihaladaptervendorextension_enabled=true
 
+# Vendor ueventd.rc — the built vendor.img shipped WITHOUT /vendor/etc/ueventd.rc
+# because closure.py excludes it (assuming source init provides it, but source only
+# generates /system/etc/ueventd.rc). Without it, 268 vendor device-node permission
+# rules are absent — critically the UFS RPMB BSG node (/dev/0:0:0:49476 0600 system
+# system), so qseecomd couldn't reach RPMB -> exited status 255 -> keymint had no
+# secure storage -> never registered IKeyMintDevice -> keystore2 hung vold -> boot froze.
+# (Root-caused 2026-07-07 via verbose pstore; the file is the stock vendor's, byte-for-byte.)
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/rootdir/vendor/etc/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc
+
+# Firmware-partition mount-point dirs (firmware_mnt/bt_firmware/soccp_firmware): created
+# via BOARD_*_EXTRA_DIRS / soong fsgen (see BoardConfig.mk) — NOT PRODUCT_COPY_FILES, since
+# soong rejects files inside a mount point. Root-caused 2026-07-07: built vendor lacked
+# these dirs -> firmware partitions couldn't mount -> WCN firmware (amss20.bin/soccp.mbn)
+# unreachable -> cnss_recovery_handler PANIC at t=69s.
+
 # IR remote: the HAL ships in the stock vendor (vendor.ir-default +
 # consumerir.zte.so). We ship only the consumerir feature permission so a
 # user-installed IR app works; the proprietary KooKong app is NOT bundled

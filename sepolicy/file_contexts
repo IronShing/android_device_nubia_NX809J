@@ -19,6 +19,14 @@
 # Haptic engine (confirmed: activate, activate_aw at /sys/class/leds/zte_vibrator/)
 /sys/class/leds/zte_vibrator(/.*)?                      u:object_r:sysfs_vibrator:s0
 
+# ZTE renamed the QTI keymint HAL binary to "onekeymint" but shipped no matching
+# file_contexts label in the LOS tree, so the built vendor left it u:object_r:vendor_file
+# (generic) -> NO SELinux domain transition -> keymint ran in the init domain, never
+# registered IKeyMintDevice -> keystore2 stuck starting -> vold hung -> boot froze.
+# (Root-caused 2026-07-07 via verbose pstore; stock file_contexts has this exact line.)
+# vendor_hal_keymint_qti_exec is already defined (keymint-service-qti uses it).
+/(vendor|system/vendor)/bin/hw/android\.hardware\.security\.onekeymint-service-qti   u:object_r:vendor_hal_keymint_qti_exec:s0
+
 # ZTE-specific vendor binaries
 /(vendor|system/vendor)/bin/hw/vendor\.zte\.fingerprint\.ifaaaidl-service   u:object_r:hal_fingerprint_default_exec:s0
 /(vendor|system/vendor)/bin/hw/vendor\.zte\.fingerprint\.ztecmdaidl-service u:object_r:hal_fingerprint_default_exec:s0
