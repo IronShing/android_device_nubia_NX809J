@@ -18,10 +18,15 @@ PRODUCT_PACKAGES += \
 #   - init.qti.display_boot.{sh,rc}: panel boot oneshot (sm8750 display/hal/init source)
 #   - mapper.qti.xml.nx809j: gralloc stable-C mapper @5.0/qti VINTF (mapper.qti.so was
 #     present but its fqname unregistered -> gralloc buffer-map failure)
+# NOTE (2026-07-14): mapper.qti.xml.nx809j REMOVED — it installed a SECOND copy of
+# mapper.qti.xml (as mapper.qti.nx809j.xml), and the source display build already ships
+# mapper.qti.xml. Two identical mapper@5.0/qti fragments = VINTF assemble conflict that
+# dropped keymint's IKeyMintDevice + boot's IBootControl from the merged manifest ->
+# keymint couldn't register -> keystore2/vold hung -> /data mount_all --late hung ->
+# boot stuck at logo. Root-caused via kmsg klog capture (see cold_reset_safe_bootmarkers).
 PRODUCT_PACKAGES += \
     init.qti.display_boot.sh \
-    init.qti.display_boot.rc \
-    mapper.qti.xml.nx809j
+    init.qti.display_boot.rc
 
 # POST-BOOT PARITY TODO (non-boot-critical, deferred): 9 secondary HALs/bins have
 # unresolved vendor deps (audit 2026-07-06): boot-control/thermal/SPU-keymint/SPU-weaver

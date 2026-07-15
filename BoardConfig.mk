@@ -111,7 +111,10 @@ BOARD_KERNEL_CMDLINE := \
     video=vfb:640x400,bpp=32,memsize=3072000 \
     nosoftlockup \
     console=ttynull \
-    qcom_geni_serial.con_enabled=0
+    qcom_geni_serial.con_enabled=0 \
+    ramoops.console_size=0x100000 \
+    ignore_loglevel \
+    printk.devkmsg=on
 # SELinux: PERMISSIVE (required). The flip to enforcing was built+flit 2026-06-16
 # and BROKE CELLULAR: the stock ZTE vendor daemon `qmipriod` crash-loops under
 # enforcing (denied search on its own /data/vendor/qmipriod = vendor_qmipriod_data_file),
@@ -233,6 +236,30 @@ BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD += \
 # recovery UI (without it the menu renders but is volume-key-only). Depends on
 # panel_event_notifier (loaded just above) + kmparam (base list), so it must come
 # after the display block.
+
+# Recovery BATTERY fix (2026-07-12): the first-stage modules.load omits the whole
+# battery/charger power_supply chain (loaded in 2nd stage from vendor_dlkm). RECOVERY
+# has no 2nd stage, so /sys/class/power_supply is empty -> minui shows a FAKE/stuck
+# battery %. The battery data reaches Linux over pmic_glink -> qti_battery_charger
+# (glink to the charger PD); that glink transport (qti_pmic_glink + pdr_interface +
+# qcom_glink*/qcom_smd + rproc_qcom_common + qmi_helpers + panel_event_notifier) is
+# ALREADY loaded by the display block above (altmode-glink proves the pmic_glink link
+# is live in recovery), and every low-level dep (smem, qcom-scm, secure_buffer, gh_*,
+# minidump, qcom_dma_heaps, ...) is in the base list. So we only add the battery
+# modules themselves, deps-first: the three leaf providers (nubia_hw_version, zte_misc,
+# zte_power_supply — the power_supply class), then the glink-ADC + charger logger, then
+# qti_battery_charger (feeds "battery" psy from the charger PD) + its debug + the ZTE
+# charge policy. Result: /sys/class/power_supply/battery/capacity reads the true level.
+BOARD_VENDOR_RAMDISK_KERNEL_MODULES_LOAD += \
+#DISABLED-FIRSTSTAGE     nubia_hw_version.ko \
+#DISABLED-FIRSTSTAGE     zte_misc.ko \
+#DISABLED-FIRSTSTAGE     zte_power_supply.ko \
+#DISABLED-FIRSTSTAGE     qti-glink-adc.ko \
+#DISABLED-FIRSTSTAGE     charger-ulog-glink.ko \
+#DISABLED-FIRSTSTAGE     qti_battery_charger.ko \
+#DISABLED-FIRSTSTAGE     qti_battery_debug.ko \
+#DISABLED-FIRSTSTAGE     zte_charger_policy.ko
+
 TARGET_HAS_GENERIC_KERNEL_IMAGE_HEADERS := true
 
 # Metadata
@@ -449,6 +476,15 @@ TARGET_FS_CONFIG_GEN := device/nubia/NX809J/config.fs
 # parse time so the touch succeeds. Upstream bug — out of scope to fix
 # in build/make/, this is the device-tree workaround.
 $(shell mkdir -p $(OUT_DIR)/target/product/NX809J/recovery/root/linkerconfig)
+
+# Firmware-partition mount-point dirs (firmware_mnt/bt_firmware/soccp_firmware).
+# fstab.qcom mounts the modem/bluetooth/soccp physical partitions at these paths;
+# without the empty mount-point dirs in vendor.img the vfat mounts fail silently ->
+# /vendor/firmware_mnt/image is empty -> IPA/WLAN/BT/FP firmware unreachable ->
+# cnss "Failed to start MHI err=-110" -> cnss_recovery panic -> BOOTLOOP (root-caused
+# 2026-07-11 via live logcat; the device.mk note said these were created but they
+# were NOT reaching the image). Pre-create at parse time (same pattern as linkerconfig).
+$(shell mkdir -p $(OUT_DIR)/target/product/NX809J/vendor/firmware_mnt $(OUT_DIR)/target/product/NX809J/vendor/bt_firmware $(OUT_DIR)/target/product/NX809J/vendor/soccp_firmware)
 
 # APEX allowed-deps check bypass
 #

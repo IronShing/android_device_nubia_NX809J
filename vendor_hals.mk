@@ -15,6 +15,35 @@ PRODUCT_PACKAGES += \
     vendor.qti.hardware.memtrack-service \
     vendor.qti.hardware.vibrator.service
 
+# ============================================================================
+# DISPLAY HALs — ALL-STOCK (2026-07-11). The source composer + stock SDM hybrid
+# is impossible: the ABI seam (source libsdmclient::GetExtendedDisplay needs
+# source libsdmutils; stock libsdmdal is the ONLY DAL that drives SM8850 SDE)
+# SIGILLs the composer. So ship the STOCK composer/allocator/demura binaries
+# (cc_prebuilt_binary prefer:true in Android.bp) coherent with the stock SDM
+# (libsdmcore/dal/utils/client prefer:true) + stock snapalloc-impl. The binaries'
+# DT_NEEDED interface libs (composer3-V4, common-V2, mapper@*, ...) build FROM
+# SOURCE and are pulled via their shared_libs; the 3 versions with NO source
+# module (aiqe-V3, composer3-V1, config-V13) are prebuilt in Android.bp.
+#
+# composer_version=stock DISABLES the qcom-caf source composer module (see its
+# Android.bp enabled: gate). The source composer can't coexist with stock SDM libs
+# (it would link both config-V12/aiqe-V2/composer3-V4 from source AND config-V13/
+# aiqe-V3/composer3-V1 from the stock libsdm* -> "multiple versions of the same
+# aidl_interface"). We ship the stock composer binary (prefer:true prebuilt) instead.
+$(call soong_config_set,qtidisplay,composer_version,v3_4)
+$(call soong_config_set,qtidisplay,default,true)
+PRODUCT_PACKAGES += \
+    vendor.qti.hardware.display.allocator-service \
+    vendor.qti.hardware.display.composer-service \
+    vendor.qti.hardware.display.demura-service
+
+# snap allocator impl (dlopen'd by composer/allocator GrallocSnapHelper) — fixes SF createClient stall
+PRODUCT_PACKAGES += \
+    vendor.qti.hardware.display.snapalloc-impl
+
+# ============================================================================
+# (superseded) STOCK PREBUILT @4 stack notes retained below for history.
 # DISPLAY HALs — use the STOCK PREBUILT @4 stack (not source).
 # The qcom-caf/sm8750 composer source maxes out at composer3 @3 (v3_3: its V4 path
 # is an unimplemented abstract AidlComposerClient), and Android 16's framework compat
@@ -31,21 +60,33 @@ PRODUCT_PACKAGES += \
 # display never armed -> boot hang at logo. Requesting the canonical names here: composer
 # resolves to the @4 prebuilt (prefer), allocator/demura resolve to source.
 # ALL THREE display services = pure source (coherent with the source libsdm* stack, which
-# exports sdm::IsExtendedRange). composer_version=v3_3 pins the source composer to the v3_3
-# AIDL impl (implements getDisplayConfigurations/notifyExpectedPresent) so AidlComposerClient
-# is concrete; without it the source composer is abstract vs composer3-V3 and won't compile.
-$(call soong_config_set,qtidisplay,composer_version,v3_3)
-PRODUCT_PACKAGES += \
-    vendor.qti.hardware.display.allocator-service \
-    vendor.qti.hardware.display.composer-service \
-    vendor.qti.hardware.display.demura-service
+# exports sdm::IsExtendedRange). composer_version=v4 pins the source composer to the new v4
+# AIDL impl (v3_3 methods getDisplayConfigurations/notifyExpectedPresent PLUS the composer3 @4
+# delta getLuts/getMaxLayerPictureProfiles/startHdcpNegotiation added in
+# hardware/qcom-caf/sm8750/display/hal/composer). This makes AidlComposerClient a concrete @4
+# implementation so it satisfies FCM 202504 (composer3 >= @4) and no longer needs the stock
+# prebuilt composer — the whole display trio is now source-coherent (fixes the runtime
+# "createClient: Unable to get snap helper" ABI seam from mixing stock @4 composer + source alloc).
+# (history) The source-composer build (composer_version=v4 + source composer/allocator/
+# demura) is removed — the stock binaries above supersede it. Interface libs that DO have
+# a source module (composer3-V4, common-V2, mapper@*, ...) must NOT be prebuilt (vendor-only
+# prebuilt collides: "partition is different"); only the 3 versions with no source module
+# (aiqe-V3, composer3-V1, config-V13) are prebuilt in Android.bp.
 
-# The composer/allocator/demura AIDL+HIDL interface libs (composer3-V4-ndk, aiqe-V3-ndk,
-# config-V13-ndk, mapper@*, mapperextensions@*, etc.) are ABI-versioned and BUILT FROM
-# SOURCE (commonsys-intf/display + hardware/interfaces) for both system+vendor variants,
-# so we do NOT prebuilt them (a vendor-only prebuilt collides: "partition is different").
-# The QTI implementation libs (libsdmcore/utils/client, libgralloc.qti, ...) already have
-# prebuilt entries in vendor/nubia/NX809J/Android.bp and install via the normal blob path.
-#
-# NOTE: no $(call soong_config_set,qtidisplay,composer_version,...) — we no longer
-# source-build the composer, so the version pin is intentionally gone.
+# ============================================================================
+# Missing vendor libs (2026-07-12): boot reached zygote+system_server (display +
+# HintManagerService fixes) but a tail of frozen-aidl -ndk libs + the audio core
+# HAL impl were never pulled into /vendor, so their consumers crash-loop at dlopen:
+#   libaudiocorehal.default        -> audiohalservice.qti -> audioserver SIGSEGV ->
+#                                     AudioService onAudioServerDied loop (boot blocker)
+#   android.hardware.boot-V1-ndk   -> android.hardware.boot-service.qti (CANNOT LINK)
+#   android.hardware.thermal-V3-ndk-> android.hardware.thermal-service.qti (CANNOT LINK)
+#   display.config-V2-ndk          -> camx.device-impl.so -> camera provider (CANNOT LINK)
+#   graphics.common-V5-ndk         -> libqcodec2_core.so -> codec2 media service
+# All 4 -ndk are frozen source versions (ABI-identical to stock); source-built vendor
+# variants install to /vendor/lib64. No prebuilt -> no "partition is different" collision.
+PRODUCT_PACKAGES += \
+    android.hardware.boot-V1-ndk \
+    android.hardware.thermal-V3-ndk \
+    android.hardware.graphics.common-V5-ndk \
+    vendor.qti.hardware.display.config-V2-ndk

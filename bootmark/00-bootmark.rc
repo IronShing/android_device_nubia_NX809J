@@ -1,0 +1,31 @@
+# 00-bootmark.rc — NX809J source-vendor boot diagnostics (TEMP; remove before ship).
+#
+# Prior logcat->block-device captures failed (block-dev open in the service context).
+# NEW approach: pipe logcat INTO /dev/kmsg (a char device, no O_TRUNC problem), so the
+# proven klog (toybox dd /dev/kmsg -> logdump) captures the framework logs INCLUDING
+# audiohalservice.qti's "Abort message". Plus print-fatal-signals logs each SIGABRT/SEGV
+# PC+regs to kmsg (crash location), and force sys.usb.config=adb for a shot at live adb.
+
+service logcatcap /system/bin/sh -c 'exec /system/bin/logcat -v threadtime > /dev/kmsg'
+    class core
+    user root
+    seclabel u:r:shell:s0
+    disabled
+
+service klog /system/bin/toybox dd if=/dev/kmsg of=/dev/block/by-name/logdump bs=8192 conv=notrunc,noerror
+    class core
+    user root
+    seclabel u:r:shell:s0
+    disabled
+
+on init
+    write /proc/sys/kernel/dmesg_restrict 0
+    write /proc/sys/kernel/print-fatal-signals 1
+    start klog
+
+on property:init.svc.logd=running
+    start logcatcap
+
+on boot
+    setprop sys.usb.config adb
+    setprop persist.sys.usb.config adb

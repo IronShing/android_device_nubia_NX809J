@@ -126,6 +126,13 @@ PRODUCT_SYSTEM_EXT_PROPERTIES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/rootdir/vendor/etc/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc
 
+# --- TEMP DIAGNOSTIC (remove before ship): cold-reset-safe boot-progress markers ---
+# 00-bootmark.rc writes "MARKED" to distinct offsets of /dev/block/by-name/rawdump at each
+# boot milestone; EDL-read 0/rawdump after a hang to see how far source-vendor boot got.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/bootmark/00-bootmark.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/00-bootmark.rc \
+    $(LOCAL_PATH)/bootmark/bootmark_byte:$(TARGET_COPY_OUT_SYSTEM)/etc/bootmark_byte
+
 # Firmware-partition mount-point dirs (firmware_mnt/bt_firmware/soccp_firmware): created
 # via BOARD_*_EXTRA_DIRS / soong fsgen (see BoardConfig.mk) — NOT PRODUCT_COPY_FILES, since
 # soong rejects files inside a mount point. Root-caused 2026-07-07: built vendor lacked
