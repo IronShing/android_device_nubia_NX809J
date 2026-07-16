@@ -493,3 +493,9 @@ PRODUCT_COPY_FILES += \
 # Only the dist/OTA path runs this check (incremental image builds don't), so it
 # surfaces only on the release build. Runtime VINTF is unaffected.
 PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
+
+# NX809J: cap AudioService policy-service wait so AudioService.<init> doesn't
+# block system_server's main thread ~65s (13x 5s) when the QTI audio-policy
+# service is slow/absent -> Watchdog kill. Read by AudioSystem.cpp.
+PRODUCT_PROPERTY_OVERRIDES += \
+    audio.service.client_wait_ms=500

@@ -28,6 +28,7 @@ apply() {  # $1 = repo path (rel to TOP)   $2 = patch subdir
   done
 }
 
+apply frameworks/av                frameworks_av
 apply frameworks/base              frameworks_base
 apply vendor/lineage               vendor_lineage
 apply packages/apps/CarrierConfig  packages_apps_CarrierConfig
