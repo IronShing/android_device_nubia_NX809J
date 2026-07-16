@@ -1,0 +1,67 @@
+From 888267a2dede870ce6513026bebabeccd59e181e Mon Sep 17 00:00:00 2001
+From: IronShing <ironsingh25@gmail.com>
+Date: Thu, 16 Jul 2026 05:52:35 +0300
+Subject: [PATCH] NX809J: display-hal fixes for source build at sm8750 path
+
+- Android.bp: wire nx809j_qti_display_uapi (msm_drm_aiqe.h/sde_drm.h from
+  device/nubia/NX809J-kernel) + libdrmutils_local_headers_nx809j into
+  display_headers, so all display modules get the DRM/UAPI headers once
+  qtidisplay.default=true activates the soong_config header branch.
+- qmaa/Android.bp: soong_namespace ref hardware/qcom-caf/sm8850 ->
+  hardware/qcom-caf/sm8750 (source lives at the sm8750 path in our tree).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XSVqjLdTXp7prKh1VGn7kD
+---
+ Android.bp      | 9 ++++++++-
+ qmaa/Android.bp | 2 +-
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/Android.bp b/Android.bp
+index c092f44..359a338 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -153,7 +153,11 @@ qtidisplay_cc_defaults {
+     defaults: ["qtidisplay_common_defaults"],
+     soong_config_variables: {
+         default: {
+-            header_libs: ["display_headers", "qti_kernel_headers"],
++            header_libs: [
++                "nx809j_qti_display_uapi", // NX809J: msm_drm_aiqe.h + display UAPI
++                "display_headers",
++                "qti_kernel_headers",
++            ],
+         },
+         headless: {
+             header_libs: ["display_headers"],
+@@ -295,12 +299,15 @@ cc_library_headers {
+         "libhistogram",
+     ],
+     header_libs: [
++        "nx809j_qti_display_uapi",
++        "libdrmutils_local_headers_nx809j",
+         "libhardware_headers",
+         "display_intf_headers",
+         "display_debug_headers",
+         "display_core_headers",
+     ],
+     export_header_lib_headers: [
++        "nx809j_qti_display_uapi",
+         "libhardware_headers",
+         "display_intf_headers",
+         "display_debug_headers",
+diff --git a/qmaa/Android.bp b/qmaa/Android.bp
+index 7c932ee..a8c353d 100644
+--- a/qmaa/Android.bp
++++ b/qmaa/Android.bp
+@@ -1,6 +1,6 @@
+ soong_namespace {
+     imports: [
+-        "hardware/qcom-caf/sm8850",
++        "hardware/qcom-caf/sm8750",
+     ],
+ }
+ composer_srcs = ["*.cpp"]
+-- 
+2.55.0
+

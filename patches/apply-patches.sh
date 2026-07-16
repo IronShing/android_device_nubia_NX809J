@@ -31,4 +31,10 @@ apply() {  # $1 = repo path (rel to TOP)   $2 = patch subdir
 apply frameworks/base              frameworks_base
 apply vendor/lineage               vendor_lineage
 apply packages/apps/CarrierConfig  packages_apps_CarrierConfig
+
+# Display: the local_manifest pulls the OnePlus-SM8850 display source (sm8850,
+# composer3-V4) to the sm8750/display path; these carry the NX809J port fixes
+# (SetupAtomic bounds fix, header wiring, libvmmem, namespace). See sm8850 README.
+apply hardware/qcom-caf/sm8750/display/core  display_sm8850/core
+apply hardware/qcom-caf/sm8750/display/hal   display_sm8850/hal
 echo "done."

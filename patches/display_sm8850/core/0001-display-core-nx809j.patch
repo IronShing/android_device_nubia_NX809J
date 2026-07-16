@@ -1,0 +1,120 @@
+From 7917aae403f72fd8c84de36877802e30a6679422 Mon Sep 17 00:00:00 2001
+From: IronShing <ironsingh25@gmail.com>
+Date: Thu, 16 Jul 2026 05:52:01 +0300
+Subject: [PATCH] NX809J: display-core fixes for source build at sm8750 path
+ (ZTE panel)
+
+- HWDeviceDRM::SetupAtomic: bounds-check 'i < layer_exts.size()' before
+  layer_exts.at(i). ZTE panel has fewer layer_exts than hw_layers -> the
+  missing check threw vector::at() out_of_range (SIGABRT on 1st atomic
+  commit). OnePlus panels never trip it.
+- libvmmem: graft (from LineageOS sm8650 display-core) - snapalloc needs it,
+  OnePlus manifest pulls it from a separate repo we don't include.
+- libsdmdal + libdrmutils: explicit header_libs (display_core_headers,
+  libdrmutils_local_headers_nx809j, nx809j_qti_display_uapi) so DRM/UAPI
+  headers resolve at the sm8750 path.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XSVqjLdTXp7prKh1VGn7kD
+---
+ libdrmutils/Android.bp         |  7 +++++++
+ libvmmem/Android.bp            | 10 ++++++++++
+ libvmmem/vmmem.h               | 23 +++++++++++++++++++++++
+ sdm/libs/dal/Android.bp        |  5 +++++
+ sdm/libs/dal/hw_device_drm.cpp |  2 +-
+ 5 files changed, 46 insertions(+), 1 deletion(-)
+ create mode 100644 libvmmem/Android.bp
+ create mode 100644 libvmmem/vmmem.h
+
+diff --git a/libdrmutils/Android.bp b/libdrmutils/Android.bp
+index 2131905..e023bf9 100644
+--- a/libdrmutils/Android.bp
++++ b/libdrmutils/Android.bp
+@@ -31,3 +31,10 @@ cc_library_shared {
+     ],
+ 
+ }
++
++// NX809J: sm8850 source dropped the header export; re-add so libsdmdal etc. find drm_lib_loader.h
++cc_library_headers {
++    name: "libdrmutils_local_headers_nx809j",
++    vendor: true,
++    export_include_dirs: ["."],
++}
+diff --git a/libvmmem/Android.bp b/libvmmem/Android.bp
+new file mode 100644
+index 0000000..2318863
+--- /dev/null
++++ b/libvmmem/Android.bp
+@@ -0,0 +1,10 @@
++cc_library_headers {
++    name: "libvmmem_headers",
++    vendor: true,
++    export_include_dirs: ["."],
++}
++
++cc_library_shared {
++    name: "libvmmem",
++    vendor: true,
++}
+diff --git a/libvmmem/vmmem.h b/libvmmem/vmmem.h
+new file mode 100644
+index 0000000..43861c8
+--- /dev/null
++++ b/libvmmem/vmmem.h
+@@ -0,0 +1,23 @@
++#ifndef __VMMEM_H__
++#define __VMMEM_H__
++
++#include <stdlib.h>
++#include <string>
++#include <vector>
++
++#define VMMEM_READ   4
++#define VMMEM_WRITE  2
++#define VMMEM_EXEC   1
++
++using VmHandle = int;
++using VmPerm = std::vector<std::pair<VmHandle, uint32_t>>;
++
++class VmMem {
++ public:
++  virtual ~VmMem() = 0;
++  static std::unique_ptr<VmMem> CreateVmMem();
++  virtual int FindVmByName(const std::string& vm_name);
++  virtual int LendDmabuf(int fd, const VmPerm& vm_perms);
++};
++
++#endif  // __VMMEM_H__
+diff --git a/sdm/libs/dal/Android.bp b/sdm/libs/dal/Android.bp
+index a77cf1b..9b79040 100644
+--- a/sdm/libs/dal/Android.bp
++++ b/sdm/libs/dal/Android.bp
+@@ -1,6 +1,11 @@
+ cc_library_shared {
+     name: "libsdmdal",
+     defaults: ["qtidisplay_defaults"],
++    header_libs: [
++        "display_core_headers",
++        "libdrmutils_local_headers_nx809j",
++        "nx809j_qti_display_uapi",
++    ], // NX809J: utils/formats.h + drm_lib_loader.h
+     sanitize: {
+         integer_overflow: true,
+     },
+diff --git a/sdm/libs/dal/hw_device_drm.cpp b/sdm/libs/dal/hw_device_drm.cpp
+index 10e02ce..ad85ea3 100644
+--- a/sdm/libs/dal/hw_device_drm.cpp
++++ b/sdm/libs/dal/hw_device_drm.cpp
+@@ -1976,7 +1976,7 @@ void HWDeviceDRM::SetupAtomic(Fence::ScopedRef &scoped_ref, HWLayersInfo *hw_lay
+           drm_atomic_intf_->Perform(DRMOps::PLANE_SET_BLEND_TYPE, pipe_id, blending);
+ 
+           drm_atomic_intf_->Perform(DRMOps::PLANE_SET_COLOR_MASK_OVERRIDE, pipe_id, 0x0);
+-          if (hw_layers_info->layer_exts.size() && hw_layers_info->layer_exts.at(i).rgba_split) {
++          if (i < hw_layers_info->layer_exts.size() && hw_layers_info->layer_exts.at(i).rgba_split) {
+             DLOGI_IF(kTagDriverConfig,
+                      "RGBA Split Layer[%d] Blend(curr) = %d being set to opaque,"
+                      " rgba_split = %d",
+-- 
+2.55.0
+

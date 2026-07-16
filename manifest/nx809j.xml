@@ -31,6 +31,29 @@
   <project name="IronShing/android_vendor_nubia_NX809J"
            path="vendor/nubia/NX809J" remote="github" revision="lineage-23" />
 
+
+  <!-- Display: swap LineageOS sm8750 display for the OnePlus-SM8850-Development
+       sm8850 source (composer3-V4 / config-V13 / aiqe-V3 = version-matched to the
+       NX809J stock display blobs; the sm8750 source only had composer3-V1/aiqe-V2).
+       Pulled to the sm8750/display path so the device's existing sm8750 display
+       namespace + wiring is reused. NX809J port fixes (SetupAtomic bounds, header
+       wiring, libvmmem, namespace) are applied by patches/display_sm8850/ via
+       apply-patches.sh. See patches/display_sm8850/README.md. -->
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-core" />
+  <project name="OnePlus-SM8850-Development/android_vendor_qcom_opensource_display-core"
+           path="hardware/qcom-caf/sm8750/display/core" remote="github"
+           revision="lineage-23.2-caf-sm8850" />
+
+  <remove-project name="LineageOS/android_hardware_qcom_display" />
+  <project name="OnePlus-SM8850-Development/android_hardware_qcom_display"
+           path="hardware/qcom-caf/sm8750/display/hal" remote="github"
+           revision="lineage-23.2-caf-sm8850" />
+
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-intf" />
+  <project name="OnePlus-SM8850-Development/android_vendor_qcom_opensource_display-intf"
+           path="hardware/qcom-caf/sm8750/display/intf" remote="github"
+           revision="lineage-23.2-caf-sm8850" />
+
   <!-- OPTIONAL: forks instead of patches/ (heavier; only if you don't want the
        apply-patches.sh step). Push the listed branches first, then uncomment:
   <remove-project name="LineageOS/android_frameworks_base" />
