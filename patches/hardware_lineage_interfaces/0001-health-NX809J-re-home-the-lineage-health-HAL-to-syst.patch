@@ -1,0 +1,100 @@
+From e63779fcd3fef8112f1526918dad15f1440667be Mon Sep 17 00:00:00 2001
+From: IronShing <ironsingh25@gmail.com>
+Date: Tue, 28 Jul 2026 11:22:17 +0300
+Subject: [PATCH] health: NX809J: re-home the lineage health HAL to /system_ext
+
+The NX809J rides the STOCK ZTE /vendor partition and ships a STOCK-derived
+/odm, so anything installed to those partitions is overwritten by the stock
+images and never reaches the device. Installing the charge-limiter HAL as
+device_specific therefore made it disappear entirely: the binary landed
+nowhere while all of the device policy pointed at /system_ext.
+
+/system_ext IS built and flashed on this device, and the device sepolicy
+already labels the HAL there (device/nubia/NX809J/sepolicy/system_ext/
+file_contexts -> hal_lineage_health_default_exec, a coredomain, with the
+matching hal_lineage_health_default.te and sysfs_batt_charge_control.te).
+
+  - Android.bp: device_specific -> system_ext_specific
+  - .rc: exec /odm/bin/hw -> /system_ext/bin/hw, and restorecon the charge
+    control node, which the .te files document as this .rc's job (the stock
+    vendor policy labels it sysfs_healthd, a vendor type a coredomain can
+    neither name nor write; sysfs supports runtime relabel)
+  - vintf fragment: type="device" -> type="framework", which is required for
+    a HAL installed on system_ext
+
+Verified on a RedMagic 11 Pro (NX809J) running LineageOS 23.2 SELinux
+Enforcing: vendor.lineage.health.IChargingControl/default and
+IFastCharge/default both register with servicemanager, the binary carries
+hal_lineage_health_default_exec, there are zero denials, and
+dumpsys lineagehealth shows ChargingControlController live on the Toggle
+provider.
+
+NOTE: the AIDL NDK backend lib vendor.lineage.health-V2-ndk.so is built as
+the core variant into system/lib64; on a device that does not ship it there,
+it must also be installed to /system_ext/lib64 or the HAL crash-loops with
+CANNOT LINK EXECUTABLE ... library not found.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XSVqjLdTXp7prKh1VGn7kD
+Change-Id: I8a0be501bcad5f29f40126fc2cc51eb207059d78
+---
+ health/aidl/default/Android.bp                        |  9 ++++++++-
+ .../default/vendor.lineage.health-service.default.rc  | 11 ++++++++++-
+ .../default/vendor.lineage.health-service.default.xml |  5 ++++-
+ 3 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/health/aidl/default/Android.bp b/health/aidl/default/Android.bp
+index 420a196..ad48f83 100644
+--- a/health/aidl/default/Android.bp
++++ b/health/aidl/default/Android.bp
+@@ -55,7 +55,14 @@ cc_binary {
+ 
+ cc_binary {
+     name: "vendor.lineage.health-service.default",
+-    vendor: true,
++    // NX809J: re-homed odm -> system_ext. This device rides the STOCK ZTE /vendor
++    // and ships a STOCK-derived /odm, so anything installed to those partitions is
++    // overwritten and never reaches the device. /system_ext is a partition we build
++    // and flash, and it is where the device sepolicy labels this binary
++    // (device/nubia/NX809J/sepolicy/system_ext/file_contexts ->
++    // hal_lineage_health_default_exec, a coredomain). Keep in sync with the .rc exec
++    // path and with the vintf fragment, which MUST be type="framework" on system_ext.
++    system_ext_specific: true,
+     relative_install_path: "hw",
+     init_rc: ["vendor.lineage.health-service.default.rc"],
+     vintf_fragments: ["vendor.lineage.health-service.default.xml"],
+diff --git a/health/aidl/default/vendor.lineage.health-service.default.rc b/health/aidl/default/vendor.lineage.health-service.default.rc
+index 77bd83f..bec2c42 100644
+--- a/health/aidl/default/vendor.lineage.health-service.default.rc
++++ b/health/aidl/default/vendor.lineage.health-service.default.rc
+@@ -1,4 +1,13 @@
+-service vendor.lineage_health /vendor/bin/hw/vendor.lineage.health-service.default
++service vendor.lineage_health /system_ext/bin/hw/vendor.lineage.health-service.default
+     class hal
+     user system
+     group system
++
++# NX809J: the charge-limiter control node is labeled sysfs_healthd by the stock
++# vendor policy — a vendor type this coredomain HAL can neither name nor write.
++# sysfs supports runtime relabel, so relabel just this FILE to the plat type
++# sysfs_batt_charge_control (device/nubia/NX809J/sepolicy/system_ext/
++# sysfs_batt_charge_control.te grants init relabelto and the HAL rw on it).
++# DAC ownership is handled separately by init.NX809J.rc (chown system system).
++on boot
++    restorecon /sys/class/qcom-battery/charging_enabled
+diff --git a/health/aidl/default/vendor.lineage.health-service.default.xml b/health/aidl/default/vendor.lineage.health-service.default.xml
+index 148385b..2eb8610 100644
+--- a/health/aidl/default/vendor.lineage.health-service.default.xml
++++ b/health/aidl/default/vendor.lineage.health-service.default.xml
+@@ -1,4 +1,7 @@
+-<manifest version="1.0" type="device">
++<!-- NX809J: type MUST be "framework" (not "device") because this HAL is installed
++     to /system_ext. A type="device" fragment on a system-side partition is rejected
++     when the manifests are assembled, and the service then never gets declared. -->
++<manifest version="1.0" type="framework">
+     <hal format="aidl">
+         <name>vendor.lineage.health</name>
+         <version>2</version>
+-- 
+2.55.0
+

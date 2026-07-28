@@ -31,4 +31,10 @@ apply() {  # $1 = repo path (rel to TOP)   $2 = patch subdir
 apply frameworks/base              frameworks_base
 apply vendor/lineage               vendor_lineage
 apply packages/apps/CarrierConfig  packages_apps_CarrierConfig
+
+# Charge limit: re-home the lineage health HAL odm -> system_ext. This device rides
+# the stock /vendor and ships a stock-derived /odm, so a device_specific HAL is
+# overwritten and never reaches the phone; the device sepolicy labels it on
+# /system_ext. Mirror: IronShing/android_hardware_lineage_interfaces @ nx809j.
+apply hardware/lineage/interfaces   hardware_lineage_interfaces
 echo "done."
