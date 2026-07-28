@@ -33,6 +33,12 @@ apply frameworks/base              frameworks_base
 apply vendor/lineage               vendor_lineage
 apply packages/apps/CarrierConfig  packages_apps_CarrierConfig
 
+# Charge limit: re-home the lineage health HAL odm -> system_ext. This device rides
+# the stock /vendor and ships a stock-derived /odm, so a device_specific HAL is
+# overwritten and never reaches the phone; the device sepolicy labels it on
+# /system_ext. Mirror: IronShing/android_hardware_lineage_interfaces @ nx809j.
+apply hardware/lineage/interfaces   hardware_lineage_interfaces
+
 # Display: the local_manifest pulls the OnePlus-SM8850 display source (sm8850,
 # composer3-V4) to the sm8750/display path; these carry the NX809J port fixes
 # (SetupAtomic bounds fix, header wiring, libvmmem, namespace). See sm8850 README.
