@@ -137,6 +137,10 @@ BOARD_BOOTCONFIG := \
 TARGET_KERNEL_ARCH := arm64
 BOARD_KERNEL_IMAGE_NAME := Image
 TARGET_PREBUILT_KERNEL := device/nubia/NX809J-kernel/prebuilt/Image
+# Ride prebuilt kernel but keep kernel/nubia/NX809J (symlink -> 6.12.23 source) so
+# generated_kernel_includes can headers_install the UAPI headers the source QTI audio needs.
+TARGET_FORCE_PREBUILT_KERNEL := true
+TARGET_KERNEL_CONFIG := gki_defconfig
 TARGET_PREBUILT_DTB := device/nubia/NX809J-kernel/prebuilt/dtb.img
 # TARGET_PREBUILT_DTB is a no-op in AOSP's build/make (nothing consumes it).
 # The rule that produces $(PRODUCT_OUT)/dtb.img (needed by recovery/boot/vendor_boot)

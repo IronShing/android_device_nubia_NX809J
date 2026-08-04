@@ -1,0 +1,84 @@
+# RedMagic fan + liquid-cooling level application (vendor_init half, /odm).
+#
+# The RedMagicControl QS tiles cycle a level and write a persist prop:
+#   persist.sys.fan.level      0..5  (Off + 5 fan speeds)
+#   persist.sys.cooling.level  0..3  (Off + 3 micropump speeds)
+# Those props are a coredomain system_app write, allowed via rm_hw_prop
+# (sepolicy/system_ext). They are CONSUMED here, in vendor_init, which the stock
+# vendor policy already permits to write the vendor hardware nodes
+# (/sys/kernel/fan, /proc/driver/micropump/*) — the same enforcing split dt2w and
+# fp_uewake use for the syna_proc gesture nodes. This file carries NO service
+# block. persist.* triggers also fire when persisted props load at boot, so the
+# last-set fan/cooling level is restored automatically after a reboot.
+
+# ---- Cooling fan: Off + 5 speeds ----
+on property:persist.sys.fan.level=0
+    write /sys/kernel/fan/fan_speed_level 0
+    write /sys/kernel/fan/fan_enable 0
+
+on property:persist.sys.fan.level=1
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 1
+
+on property:persist.sys.fan.level=2
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 2
+
+on property:persist.sys.fan.level=3
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 3
+
+on property:persist.sys.fan.level=4
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 4
+
+on property:persist.sys.fan.level=5
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 5
+
+# ---- Liquid cooling (micropump): Off + 3 distinct speeds ----
+# The pump tach quantises to ~3 tiers; speed 2 / 5 / 8 land on the distinct
+# readback steps (0 / 3 / 6) so Low/Med/High are perceptibly different.
+# Micropump = ON/OFF (piezo AWP1921). It only physically circulates coolant at
+# high drive speed (~30) — lower values energize the piezo but don't move fluid.
+on property:persist.sys.cooling.level=0
+    write /proc/driver/micropump/enable 0
+
+on property:persist.sys.cooling.level=1
+    write /proc/driver/micropump/freq 4
+    write /proc/driver/micropump/enable 1
+    write /proc/driver/micropump/speed 30
+
+# ---- Shoulder triggers (SAR capacitive) ----
+on property:persist.sys.rm.trigger_left=1
+    write /sys/class/leds/sar0/mode_operation 1
+on property:persist.sys.rm.trigger_left=0
+    write /sys/class/leds/sar0/mode_operation 0
+on property:persist.sys.rm.trigger_right=1
+    write /sys/class/leds/sar1/mode_operation 1
+on property:persist.sys.rm.trigger_right=0
+    write /sys/class/leds/sar1/mode_operation 0
+
+# ---- Edge-touch rejection (anti-grip); off = full-edge for back gesture ----
+on property:persist.sys.rm.edge_reject=1
+    write /proc/touchscreen/edge_report_limit algo_open:1
+on property:persist.sys.rm.edge_reject=0
+    write /proc/touchscreen/edge_report_limit algo_open:0
+
+# ---- Haptic test pulse (app bumps sys.rm.haptic_test after setting haptic_ms) ----
+on property:sys.rm.haptic_test=*
+    write /sys/class/leds/zte_vibrator/duration ${persist.sys.rm.haptic_ms}
+    write /sys/class/leds/zte_vibrator/activate 1
+
+# ---- RGB lighting (app writes the final 0x[pos][eff][color] value per zone) ----
+# NOTE: aw22xxx lighting is firmware-config driven; effect+cfg wiring is present
+# but the correct fw sequence is still being worked out (see memory). EXPERIMENTAL.
+on property:persist.sys.rm.led.logo=*
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.logo}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+on property:persist.sys.rm.led.shoulder=*
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.shoulder}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+on property:persist.sys.rm.led.fan=*
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan}
+    write /sys/class/leds/aw22xxx_led/cfg 1

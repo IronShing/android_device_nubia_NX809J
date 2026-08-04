@@ -43,6 +43,12 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     fs_config_files
 
+# OpenEUICC — privileged eSIM LPA (Local Profile Assistant) for the internal
+# removable eUICC. Builds from packages/apps/OpenEUICC as a platform-signed
+# system_ext priv-app (+ liblpac-jni native + privapp permission whitelist).
+PRODUCT_PACKAGES += \
+    OpenEUICC
+
 # Bluetooth classic profiles. The closure build shipped ONLY the LE-Audio
 # profile defaults; every classic profile (A2DP source, HFP AG, AVRCP, GATT,
 # HID, PAN, MAP, PBAP, OPP) was unset, so no classic profile service started
@@ -140,9 +146,11 @@ PRODUCT_COPY_FILES += \
 # unreachable -> cnss_recovery_handler PANIC at t=69s.
 
 # IR remote: the HAL ships in the stock vendor (vendor.ir-default +
-# consumerir.zte.so). We ship only the consumerir feature permission so a
-# user-installed IR app works; the proprietary KooKong app is NOT bundled
-# (redistribution). Sideload an IR remote app of your choice.
+# consumerir.zte.so) and the device already reports the consumerir feature, so
+# the copied permission below is belt-and-suspenders. The user-facing app
+# (com.zte.remotecontroller / InfraredCoolControl) IS now bundled via ir/ir.mk
+# — ported from CN firmware, per github.com/IronShing/nx809j-ir-port. NOTE for a
+# public release: it's a proprietary ZTE/KooKong app; bundling is the user's call.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/permissions/android.hardware.consumerir.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/android.hardware.consumerir.xml
 
@@ -184,6 +192,14 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/disable-crashloop-hals.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-crashloop-hals.rc
 
+# TxPwrAdmin (vendor.qti.data.txpwradmin) crashes on user-switch: its non-singleUser
+# components get spawned for secondary users, but it expects a single system-user
+# instance in the shared .qms process. The APK is ZTE-platform-signed (shared UID
+# with the QTI telephony suite) so we can't edit its manifest. Instead confine it to
+# the SYSTEM user via SystemConfig install-in-user-type (whitelist mode has ENFORCE).
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/sysconfig/txpwradmin-system-user.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/txpwradmin-system-user.xml
+
 # Goodix UDFPS: make fingerprint survive a /data wipe. The working cal
 # (/data/vendor/goodix) and the virtual-HAL config props both live on /data and are
 # lost on a factory reset / EDL stock<->LOS swap. restore-fp-cal.rc re-seeds both in
@@ -222,6 +238,23 @@ PRODUCT_PACKAGES += \
     dt2w_uewake_arm.rc
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/dt2w/dt2w_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/dt2w_uewake.kl
+
+# --- Deep-sleep ultrasonic-FP wake+unlock (fp_uewake) ---
+# The ultrasonic UDFPS works screen-on; in deep sleep the touch driver reports an
+# FP-area finger-down as a kobject uevent (aod_areameet_down=true) instead of an
+# input event. fp_uewake (system_ext coredomain, netlink+uinput) injects
+# KEY_WAKEUP + a synthetic FP-area touch so the UDFPS scans the held finger and
+# unlocks — place finger on the dark screen -> wake+unlock, like stock. Same
+# enforcing split as dt2w_uewake: syna_proc arming via odm fp_uewake_arm.rc.
+PRODUCT_PACKAGES += \
+    fp_uewake \
+    fp_uewake_arm.rc
+
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/fp_uewake/fp_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/fp_uewake.kl
+
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.sys.fp_wake.enabled=1
 
 # Firmware (vendor blobs installed via PRODUCT_COPY_FILES in vendor mk)
 $(call inherit-product-if-exists, vendor/nubia/NX809J/NX809J-vendor.mk)
@@ -499,3 +532,25 @@ PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
 # service is slow/absent -> Watchdog kill. Read by AudioSystem.cpp.
 PRODUCT_PROPERTY_OVERRIDES += \
     audio.service.client_wait_ms=500
+
+# --- RedMagic Control app (Settings screen + QS tiles: Loudness / FP Wake / DT2W
+# / Cooling Fan (5 levels) / Liquid Cooling (3 levels)) ---
+PRODUCT_PACKAGES += \
+    RedMagicControl
+
+# Fan (5) + liquid-cooling (3) level triggers -> /odm/etc/init (vendor_init writes
+# the vendor fan/micropump nodes; tiles set persist.sys.{fan,cooling}.level).
+# Same enforcing split as dt2w_uewake_arm.rc.
+PRODUCT_PACKAGES += \
+    redmagic_hw_arm.rc
+
+PRODUCT_PACKAGES += \
+    loudness
+
+# hwcontrol daemon: applies RedMagicControl RGB / edge-reject / triggers / haptics
+# / auto-fan settings (persist.sys.rm.*) to the hardware nodes it can reach.
+PRODUCT_PACKAGES += \
+    hwcontrol
+
+$(call inherit-product-if-exists, device/nubia/NX809J/audio/viper4android/viper4android.mk)
+$(call inherit-product-if-exists, device/nubia/NX809J/ir/ir.mk)

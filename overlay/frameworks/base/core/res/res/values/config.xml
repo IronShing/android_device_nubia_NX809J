@@ -103,4 +103,7 @@
         <item>600.0</item>
         <item>780.0</item>
     </array>
+    <!-- 144Hz: default peak + min refresh so the panel runs at its max -->
+    <integer name="config_defaultPeakRefreshRate">144</integer>
+    <integer name="config_defaultRefreshRate">144</integer>
 </resources>

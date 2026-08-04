@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Confine the QTI TxPwrAdmin app (vendor.qti.data.txpwradmin) to the SYSTEM user.
+
+  TxPwrAdmin is a persistent QTI data-services helper that runs in the shared
+  ".qms" process under sharedUserId com.qualcomm.qti.qmsdataservices. Its
+  .ProxyService / .BootCompleteReceiver are not singleUser, so when a secondary
+  user is created and switched to, the framework tries to start them for that
+  user and the app crashes (it expects a single system-user instance).
+
+  We cannot add android:singleUser to the manifest because the APK is signed with
+  the stock ZTE platform key (shared UID with the QTI telephony suite) and we
+  don't hold that key. Instead we restrict the package to the SYSTEM user via
+  SystemConfig install-in-user-type: it is never installed for FULL/PROFILE
+  (secondary) users, so those per-user components never start and cannot crash.
+  config_userTypePackageWhitelistMode has the ENFORCE bit set, so this is honored.
+-->
+<config>
+    <install-in-user-type package="vendor.qti.data.txpwradmin">
+        <install-in user-type="SYSTEM" />
+    </install-in-user-type>
+</config>

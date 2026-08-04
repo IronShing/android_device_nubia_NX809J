@@ -1,0 +1,31 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# System-side (coredomain) domain for the RedMagic hardware-control daemon
+# (/system_ext/bin/hwcontrol). It applies persist.sys.rm.* settings from the
+# RedMagicControl app to the hardware nodes it can reach as a coredomain:
+#   - aw22xxx RGB lighting (sysfs_multicolor_led)
+#   - auto fan-by-temp: reads thermal zones, sets persist.sys.fan.level
+#     (vendor_init/redmagic_hw_arm.rc does the real /sys/kernel/fan write).
+# Fan/pump hardware writes stay on the vendor_init path (vendor-labelled nodes a
+# coredomain cannot name). Other nodes (edge_report_limit, sar, vibrator) are
+# added as their labels are pinned down + validated on-device.
+
+type hwcontrol, domain, coredomain;
+type hwcontrol_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(hwcontrol)
+
+# RGB / edge / triggers / haptics are vendor-labelled nodes a coredomain cannot
+# name — those writes are done by vendor_init (redmagic_hw_arm.rc) off the same
+# persist.sys.rm.* props. This daemon does ONLY the coredomain-clean work below.
+
+# Auto fan-by-temp: read thermal zones, then request a fan level via a property.
+r_dir_file(hwcontrol, sysfs_thermal)
+
+# Control properties the app sets and the daemon reads; and the fan level it
+# requests for auto mode (rm_hw_prop already carries persist.sys.fan.level).
+system_internal_prop(rm_ctrl_prop)
+set_prop(hwcontrol, rm_ctrl_prop)
+set_prop(hwcontrol, rm_hw_prop)
+get_prop(hwcontrol, rm_hw_prop)

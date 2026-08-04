@@ -1,0 +1,11 @@
+# RedMagic Control app (system_app / android.uid.system) sets the device toggle
+# properties consumed by the init services (fp_uewake, dt2w_uewake, loudness).
+system_internal_prop(loudness_prop)
+set_prop(system_app, fp_wake_prop)
+set_prop(system_app, dt2w_prop)
+set_prop(system_app, loudness_prop)
+# fan / liquid-cooling level props (app sets; vendor_init maps to sysfs)
+system_internal_prop(rm_hw_prop)
+set_prop(system_app, rm_hw_prop)
+# hwcontrol daemon settings props (app sets; hwcontrol daemon applies)
+set_prop(system_app, rm_ctrl_prop)

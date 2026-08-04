@@ -1,0 +1,18 @@
+# loudness — global LoudnessEnhancer makeup-gain service. Gated on
+# persist.sys.loudness.enabled; gain (mB) via persist.sys.loudness_gain_mb.
+# Runs as audioserver so it holds MODIFY_AUDIO_ROUTING for the global-mix effect.
+service loudness /system_ext/bin/loudness
+    class late_start
+    user audioserver
+    group audio
+    disabled
+    oneshot
+
+on property:persist.sys.loudness.enabled=1
+    start loudness
+
+on property:persist.sys.loudness.enabled=0
+    stop loudness
+
+on property:sys.boot_completed=1 && property:persist.sys.loudness.enabled=1
+    start loudness

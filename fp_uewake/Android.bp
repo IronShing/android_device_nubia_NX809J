@@ -1,0 +1,18 @@
+// NX809J deep-sleep ultrasonic-FP wake+unlock bridge (mirrors dt2w_uewake split).
+// Coredomain daemon on /system_ext (netlink + uinput only); vendor syna_proc
+// arming delegated to vendor_init via sys.fp.arm (fp_uewake_arm.rc -> /odm).
+cc_binary {
+    name: "fp_uewake",
+    srcs: ["fp_uewake.c"],
+    shared_libs: ["liblog"],
+    cflags: ["-Wall", "-Werror"],
+    init_rc: ["fp_uewake.rc"],
+    system_ext_specific: true,
+}
+
+prebuilt_etc {
+    name: "fp_uewake_arm.rc",
+    src: "fp_uewake_arm.rc",
+    sub_dir: "init",
+    device_specific: true,
+}

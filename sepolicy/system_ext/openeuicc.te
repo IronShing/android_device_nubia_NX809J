@@ -1,0 +1,6 @@
+# OpenEUICC (privileged eSIM LPA, im.angry.openeuicc) is a platform-signed priv-app
+# and runs in the platform_app domain. Under enforcing it was denied service_manager
+# 'find' on the OMAPI SecureElement service, so the LPA spun forever ("loading").
+# Grant platform_app access to the OMAPI SecureElement service so OpenEUICC can
+# enumerate SE readers / reach the eUICC.
+allow platform_app secure_element_service:service_manager find;

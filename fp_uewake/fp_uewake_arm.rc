@@ -1,0 +1,7 @@
+# fp_uewake — single_tap arming action (vendor_init half, /odm). Writes the
+# vendor-labelled syna_proc node on each sys.fp.arm 0->1 pulse from the daemon.
+on property:persist.sys.fp_wake.enabled=0
+    write /proc/touchscreen/single_tap 0
+
+on property:sys.fp.arm=1
+    write /proc/touchscreen/single_tap 1

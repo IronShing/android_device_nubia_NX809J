@@ -1,0 +1,14 @@
+// RedMagic fan + liquid-cooling QS-tile level triggers.
+//
+// Installed to /odm/etc/init so the builtin `write` actions run in the
+// vendor_init domain, which the stock vendor policy already allows to write the
+// vendor-labelled hardware nodes (/sys/kernel/fan, /proc/driver/micropump). The
+// RedMagicControl tiles (coredomain system_app) only set persist.sys.fan.level /
+// persist.sys.cooling.level; this rc does the real hardware write. Same
+// enforcing split as dt2w_uewake_arm.rc / fp_uewake_arm.rc.
+prebuilt_etc {
+    name: "redmagic_hw_arm.rc",
+    src: "redmagic_hw_arm.rc",
+    sub_dir: "init",
+    device_specific: true,
+}

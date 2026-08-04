@@ -1,0 +1,27 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# System-side (coredomain) domain for the deep-sleep ultrasonic-FP wake+unlock
+# bridge (/system_ext/bin/fp_uewake). Mirrors dt2w_uewake: it does ONLY platform
+# work — listen for the touch driver's kobject uevents (aod_areameet_down /
+# screen-on) and inject KEY_WAKEUP + a synthetic FP-area touch through
+# /dev/uinput. It never touches /proc/touchscreen (vendor syna_proc); arming the
+# single_tap node is delegated to a vendor_init action (fp_uewake_arm.rc) that
+# triggers on the sys.fp.arm property this daemon pulses.
+
+type fp_uewake, domain, coredomain;
+type fp_uewake_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(fp_uewake)
+
+# Listen for the driver's finger-down / screen-on kobject uevents.
+allow fp_uewake self:netlink_kobject_uevent_socket { create bind read getopt setopt };
+allow fp_uewake self:capability net_admin;
+
+# Inject KEY_WAKEUP + synthetic touch through virtual uinput devices.
+allow fp_uewake uhid_device:chr_file { open read write ioctl };
+
+# Request a single_tap re-arm: pulse sys.fp.arm 0->1; an odm vendor_init action
+# does the real syna_proc write. system_internal_prop (coredomain accessors only).
+system_internal_prop(fp_wake_prop)
+set_prop(fp_uewake, fp_wake_prop)

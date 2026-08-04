@@ -1,0 +1,19 @@
+cc_binary {
+    name: "loudness",
+    srcs: ["loudness.cpp"],
+    shared_libs: [
+        "libaudioclient",
+        "libaudiofoundation",
+        "libbinder",
+        "libutils",
+        "libcutils",
+        "liblog",
+        "libbase",
+        "libaudioclient_aidl_conversion",
+        "libpermission",
+    ],
+    cflags: ["-Wall", "-Wno-unused-parameter"],
+    init_rc: ["loudness.rc"],
+    vendor: false,
+    system_ext_specific: true,
+}

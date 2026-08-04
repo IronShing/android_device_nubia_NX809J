@@ -1,0 +1,14 @@
+// Nubia IR remote app (com.zte.remotecontroller) — ported from CN firmware.
+// The IR HAL (consumerir.zte.so + /dev/zte_ir + consumer_ir service) and the
+// android.hardware.consumerir feature are already present on this device; only
+// the user-facing app was missing. ZTE-signed, so presigned + preprocessed.
+android_app_import {
+    name: "InfraredCoolControl",
+    apk: "InfraredCoolControl.apk",
+    presigned: true,
+    preprocessed: true,       // targetSdk 35 >= 30: install v2-signed apk as-is
+    product_specific: true,   // -> /product/app/InfraredCoolControl
+    dex_preopt: {
+        enabled: false,
+    },
+}

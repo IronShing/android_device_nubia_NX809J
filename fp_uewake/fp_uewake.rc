@@ -1,0 +1,21 @@
+# fp_uewake — deep-sleep ultrasonic-FP wake+unlock bridge (service block).
+# Installs to /system_ext so init's coredomain type_transition fires (same as
+# dt2w_uewake). Coredomain daemon: only netlink + uinput. Arming the vendor
+# syna_proc node /proc/touchscreen/single_tap is delegated to vendor_init via
+# sys.fp.arm (see fp_uewake_arm.rc on /odm). Gated on persist.sys.fp_wake.enabled.
+
+service fp_uewake /system_ext/bin/fp_uewake
+    class late_start
+    user system
+    group system input uhid
+    capabilities NET_ADMIN
+    disabled
+
+on property:persist.sys.fp_wake.enabled=1
+    start fp_uewake
+
+on property:persist.sys.fp_wake.enabled=0
+    stop fp_uewake
+
+on property:sys.boot_completed=1 && property:persist.sys.fp_wake.enabled=1
+    start fp_uewake

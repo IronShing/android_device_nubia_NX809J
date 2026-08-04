@@ -1,0 +1,13 @@
+cc_binary {
+    name: "hwcontrol",
+    srcs: ["hwcontrol.cpp"],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libcutils",
+    ],
+    cflags: ["-Wall", "-Werror", "-Wno-unused-parameter"],
+    init_rc: ["hwcontrol.rc"],
+    vendor: false,
+    system_ext_specific: true,
+}

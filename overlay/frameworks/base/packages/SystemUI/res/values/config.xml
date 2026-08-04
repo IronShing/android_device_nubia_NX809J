@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- RedMagic Control tiles on top of the default Quick Settings layout. -->
+    <string name="quick_settings_tiles_default" translatable="false">
+        custom(com.nubia.rmcontrol/.LoudnessTile),custom(com.nubia.rmcontrol/.FpWakeTile),custom(com.nubia.rmcontrol/.Dt2wTile),custom(com.nubia.rmcontrol/.FanTile),custom(com.nubia.rmcontrol/.CoolingTile),internet,bt,flashlight,dnd,alarm,airplane,rotation,battery,cast,screenrecord,color_correction,inversion,saver,dark,location,onehanded
+    </string>
+</resources>

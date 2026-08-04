@@ -1,0 +1,28 @@
+// ViPER4Android RE (AIDL) — baked into the ROM (replaces the KSU module).
+// App is the +10 dB-Output-Gain rebuild (valueRange 1..316); driver is libv4a_aidl.so.
+
+android_app_import {
+    name: "ViPER4Android",
+    apk: "app/ViPER4Android.apk",
+    presigned: true,        // release-signed (minified/shrunk, 3.5MB, CN=NX809J V4A), +10dB Output Gain
+    preprocessed: true,     // APK is already v2-signed+aligned; install as-is (targetSdk>=30 requires this)
+    product_specific: true, // lands in /product/app/ViPER4Android
+    dex_preopt: {
+        enabled: false,
+    },
+}
+
+// The AIDL effect driver → /vendor/lib64/soundfx/libv4a_aidl.so
+cc_prebuilt_library_shared {
+    name: "libv4a_aidl",
+    srcs: ["blobs/libv4a_aidl.so"],
+    check_elf_files: false,
+    strip: {
+        none: true,
+    },
+    compile_multilib: "64",
+    prefer: true,
+    soc_specific: true,     // vendor partition
+    relative_install_path: "soundfx",
+    shared_libs: ["liblog", "libutils", "libcutils"],
+}

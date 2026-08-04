@@ -5,3 +5,13 @@
 # ask the odm/vendor_init dt2w_uewake.rc action to write the vendor syna_proc
 # gesture node. dt2w_uewake sets it; init reads/triggers on it. See dt2w_uewake.te.
 sys.dt2w.arm    u:object_r:dt2w_prop:s0
+sys.fp.arm                 u:object_r:fp_wake_prop:s0
+persist.sys.fp_wake        u:object_r:fp_wake_prop:s0
+persist.sys.loudness       u:object_r:loudness_prop:s0
+persist.sys.fan.level      u:object_r:rm_hw_prop:s0
+persist.sys.cooling.level  u:object_r:rm_hw_prop:s0
+
+# RedMagic hwcontrol daemon settings (RGB, edge-reject, triggers, haptics, auto-fan)
+# set by the RedMagicControl app, read/applied by the hwcontrol coredomain daemon.
+persist.sys.rm.            u:object_r:rm_ctrl_prop:s0
+sys.rm.                    u:object_r:rm_ctrl_prop:s0

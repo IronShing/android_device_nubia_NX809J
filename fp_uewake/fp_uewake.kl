@@ -1,0 +1,2 @@
+# uinput device "fp_uewake" — emits KEY_WAKEUP (143) to wake on FP-area finger-down.
+key 143   WAKEUP   WAKE

@@ -1,0 +1,10 @@
+service hwcontrol /system_ext/bin/hwcontrol
+    class late_start
+    user system
+    group system
+    seclabel u:r:hwcontrol:s0
+    disabled
+
+# Start once boot is far enough that thermal + led nodes exist.
+on property:sys.boot_completed=1
+    start hwcontrol
