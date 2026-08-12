@@ -63,7 +63,32 @@
          Pairs with the enable_desktop_windowing_mode aconfig override (build/release/aconfig/bp4a)
          and the freeform_window_management feature in device.mk. -->
     <bool name="config_isDesktopModeSupported">true</bool>
-    <bool name="config_canInternalDisplayHostDesktops">true</bool>
+    <!-- FALSE on purpose: this is what removes the white "app handle" pill that Android 16
+         draws at the top centre of every fullscreen app (reported on XDA as an undismissable
+         white bar). The pill is desktop-windowing task decor, not a status bar element - it
+         survives a SystemUI restart, ignores every status bar setting, and there is NO runtime
+         way to switch it off on this build (show_desktop_experience_dev_option is baked
+         enabled, and that code path can only return OVERRIDE_ON or OVERRIDE_UNSET - never OFF).
+
+         Path that matters (AppHandleAndHeaderVisibilityHelper):
+           shouldShowAppHandleOrHeader = allowedForTask() && allowedForDisplay()
+             ^ the && allowedForDisplay() applies because enable_projected_display_desktop_mode
+               is baked enabled in this build
+           allowedForDisplay(internal) -> DesktopModeStatus.isDesktopModeSupportedOnDisplay()
+             -> enforceDeviceRestrictions() is true (sysprop unset, defaults true)
+             -> display.getType()==TYPE_INTERNAL -> returns THIS bool
+           then falls through to a large-screen check, which fails here
+           (minSizeDimensionDp = 374dp < LARGE_SCREEN_SMALLEST_SCREEN_WIDTH_DP = 600).
+         So false here => allowedForDisplay() false => no handle.
+
+         NOTE: this bool is *short-circuited* inside canEnterDesktopMode() by the projected-display
+         flag, so reasoning from that function alone suggests (wrongly) that it has no effect.
+         allowedForDisplay() is the gate that actually consumes it.
+
+         Cost: no on-device freeform/desktop on the phone screen. External/projected displays are
+         unaffected (they take the isDisplayInTopology / isEligibleForDesktopMode path).
+         Set back to true to restore on-device desktop mode - and the pill with it. -->
+    <bool name="config_canInternalDisplayHostDesktops">false</bool>
     <bool name="config_isDesktopModeDevOptionSupported">true</bool>
 
     <!-- Auto-brightness curve. config_automatic_brightness_available is true and the

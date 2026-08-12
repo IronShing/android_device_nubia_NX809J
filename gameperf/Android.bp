@@ -1,0 +1,20 @@
+// NX809J game performance boost daemon (perf-lock client for the QTI perf HAL).
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_binary {
+    name: "gameperfd",
+    srcs: ["gameperfd.cpp"],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libdl",
+    ],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    vendor: true,
+    init_rc: ["gameperfd.rc"],
+}

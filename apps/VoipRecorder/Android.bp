@@ -1,0 +1,26 @@
+// VoIP Call Recorder — platform-signed privileged app that records WhatsApp
+// (and other allow-listed) VoIP calls via the framework capture path.
+// Relies on the stock ZTE audio HAL's zte_feature_system_record_voip_enabled=true.
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+android_app {
+    name: "VoipRecorder",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    manifest: "AndroidManifest.xml",
+
+    // Needs @SystemApi/hidden audio-policy APIs (AudioPolicy/AudioMix loopback)
+    // and MODIFY_AUDIO_ROUTING + CAPTURE_VOICE_COMMUNICATION_OUTPUT, so build
+    // against the full platform and sign with the platform key.
+    platform_apis: true,
+    certificate: "platform",
+    privileged: true,
+    // Plain /system priv-app: platform_apis (AudioPolicy/AudioMix @SystemApi) is only
+    // permitted here, not on product/system_ext under the partition-interface enforcement.
+
+    optimize: {
+        enabled: false,
+    },
+}

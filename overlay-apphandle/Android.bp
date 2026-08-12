@@ -1,0 +1,10 @@
+// Mutable RRO for the Android 16 desktop "app handle" (the white pill atop fullscreen apps).
+// The build defaults to hidden (config_canInternalDisplayHostDesktops=false via the device
+// framework-res overlay). This RRO sets it TRUE; the Evolver "Show app handle" switch enables it
+// via OverlayManager to reveal the handle + on-device desktop hosting. Ships DISABLED in
+// /product/overlay.
+runtime_resource_overlay {
+    name: "ShowAppHandleOverlay",
+    product_specific: true,
+    sdk_version: "current",
+}

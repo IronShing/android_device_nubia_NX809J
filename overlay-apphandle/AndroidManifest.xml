@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nx809j.overlay.showapphandle"
+    android:versionCode="1"
+    android:versionName="1.0">
+    <!-- Reveals the Android 16 desktop-windowing "app handle" by turning ON internal-display
+         desktop hosting. Mutable (isStatic=false) so the Settings switch toggles it. Default off. -->
+    <overlay
+        android:targetPackage="android"
+        android:isStatic="false"
+        android:priority="2"
+        android:category="com.nx809j.show_app_handle" />
+    <application android:hasCode="false" />
+</manifest>

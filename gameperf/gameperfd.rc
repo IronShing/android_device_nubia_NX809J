@@ -1,0 +1,6 @@
+service vendor.gameperfd /vendor/bin/gameperfd
+    class late_start
+    user system
+    group system
+    priority -8
+    seclabel u:r:gameperfd:s0

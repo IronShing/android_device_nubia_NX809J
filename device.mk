@@ -43,6 +43,12 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     fs_config_files
 
+# Desktop "app handle" toggle: mutable /product/overlay RRO (config=true). Build defaults to hidden
+# (device framework-res overlay sets config_canInternalDisplayHostDesktops=false); the Evolver
+# "Show app handle" switch (Settings > Evolution X > Miscellaneous) enables this overlay to reveal it.
+PRODUCT_PACKAGES += \
+    ShowAppHandleOverlay
+
 # OpenEUICC — privileged eSIM LPA (Local Profile Assistant) for the internal
 # removable eUICC. Builds from packages/apps/OpenEUICC as a platform-signed
 # system_ext priv-app (+ liblpac-jni native + privapp permission whitelist).
@@ -200,22 +206,21 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/sysconfig/txpwradmin-system-user.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/sysconfig/txpwradmin-system-user.xml
 
-# Goodix UDFPS: make fingerprint survive a /data wipe. The working cal
-# (/data/vendor/goodix) and the virtual-HAL config props both live on /data and are
-# lost on a factory reset / EDL stock<->LOS swap. restore-fp-cal.rc re-seeds both in
-# post-fs-data (before the Goodix HAL starts). The cal is this unit's per-unit
-# transplant; shipped read-only in /product/etc/goodix_cal. See the .rc + memory
-# fp_data_wipe_restore_2026-06-18.
+# Goodix UDFPS: make fingerprint survive a /data wipe. What a wipe actually destroys is
+# the virtual-HAL config props (they live in /data/property/persistent_properties);
+# restore-fp-cal.rc re-asserts them in post-fs-data, before the Goodix HAL starts.
+#
+# We deliberately ship NO calibration. The per-unit cal is
+# /mnt/vendor/persist/goodix/cali_data_0.so — factory-programmed, per-device, not wiped by
+# a factory reset and not a partition we flash, so every phone already has its own. The
+# /data/vendor/goodix/cali_*.so are runtime base images the HAL regenerates by itself
+# (verified on hardware 2026-08-06: emptied that dir, HAL rebuilt it, enroll+unlock work).
+# Older builds copied this build machine's copies of those files onto every phone, which is
+# exactly why UDFPS only worked here; fp-cal-purge.sh removes them once on upgrade.
+# See memory nx809j_fp_persist_partition_cal.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/restore-fp-cal.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/restore-fp-cal.rc \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_0.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_0.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_1.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_1.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_2.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_2.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_0_3.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_0_3.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_3.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_3.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/cali_4.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/cali_4.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/sys_cached_f_params_0.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/sys_cached_f_params_0.so \
-    $(LOCAL_PATH)/fingerprint/goodix_cal/sys_cached_params_0.so:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix_cal/sys_cached_params_0.so
+    $(LOCAL_PATH)/prebuilt/etc/goodix/fp-cal-purge.sh:$(TARGET_COPY_OUT_PRODUCT)/etc/goodix/fp-cal-purge.sh
 
 # Double-tap-to-wake (WORKING). The ZTE/Synaptics zte_tpd driver detects the
 # double-tap in low-power gesture mode and, instead of an input KEY_WAKEUP, fires
@@ -533,6 +538,14 @@ PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
 PRODUCT_PROPERTY_OVERRIDES += \
     audio.service.client_wait_ms=500
 
+# --- VoIP Call Recorder (privileged app: auto-records allow-listed VoIP calls,
+# WhatsApp by default, both sides, via the framework capture path — relies on the
+# stock ZTE audio HAL's ro.vendor.feature.zte_feature_system_record_voip_enabled=true) ---
+PRODUCT_PACKAGES += \
+    VoipRecorder
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/apps/VoipRecorder/privapp_permissions_com.nx809j.voiprecorder.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp_permissions_com.nx809j.voiprecorder.xml
+
 # --- RedMagic Control app (Settings screen + QS tiles: Loudness / FP Wake / DT2W
 # / Cooling Fan (5 levels) / Liquid Cooling (3 levels)) ---
 PRODUCT_PACKAGES += \
@@ -554,3 +567,5 @@ PRODUCT_PACKAGES += \
 
 $(call inherit-product-if-exists, device/nubia/NX809J/audio/viper4android/viper4android.mk)
 $(call inherit-product-if-exists, device/nubia/NX809J/ir/ir.mk)
+
+PRODUCT_COPY_FILES += \

@@ -12,29 +12,40 @@
 # last-set fan/cooling level is restored automatically after a reboot.
 
 # ---- Cooling fan: Off + 5 speeds ----
+# The kernel [NB_FAN] driver's fan_speed_level (0-5) is coarse (fan_speed_count=0,
+# so it has no real level table) — intermediate levels barely differ, only max is
+# distinct. The granular control is fan_speed_pwm, a 0-100 duty PERCENT (the driver
+# rejects >100: "bad pwm, not in (0-100)"). So each level now sets a distinct PWM%
+# as well; pwm is written LAST so it's the effective duty.
 on property:persist.sys.fan.level=0
     write /sys/kernel/fan/fan_speed_level 0
+    write /sys/kernel/fan/fan_speed_pwm 0
     write /sys/kernel/fan/fan_enable 0
 
 on property:persist.sys.fan.level=1
     write /sys/kernel/fan/fan_enable 1
     write /sys/kernel/fan/fan_speed_level 1
+    write /sys/kernel/fan/fan_speed_pwm 30
 
 on property:persist.sys.fan.level=2
     write /sys/kernel/fan/fan_enable 1
     write /sys/kernel/fan/fan_speed_level 2
+    write /sys/kernel/fan/fan_speed_pwm 45
 
 on property:persist.sys.fan.level=3
     write /sys/kernel/fan/fan_enable 1
     write /sys/kernel/fan/fan_speed_level 3
+    write /sys/kernel/fan/fan_speed_pwm 60
 
 on property:persist.sys.fan.level=4
     write /sys/kernel/fan/fan_enable 1
     write /sys/kernel/fan/fan_speed_level 4
+    write /sys/kernel/fan/fan_speed_pwm 80
 
 on property:persist.sys.fan.level=5
     write /sys/kernel/fan/fan_enable 1
     write /sys/kernel/fan/fan_speed_level 5
+    write /sys/kernel/fan/fan_speed_pwm 100
 
 # ---- Liquid cooling (micropump): Off + 3 distinct speeds ----
 # The pump tach quantises to ~3 tiers; speed 2 / 5 / 8 land on the distinct

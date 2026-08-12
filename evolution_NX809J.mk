@@ -17,11 +17,41 @@ $(call inherit-product, device/nubia/NX809J/device.mk)
 # GApps variant selector:
 #   true  = mini/basic (Pixel Launcher + Play Store + full GmsCore/Play Integrity, no Pixel bloat)
 #   false = full Pixel GApps
-# We ship BOTH variants (super_minimal / super_full); flip this per build.
-TARGET_USES_MINI_GAPPS := true
+# ── GApps variant ─────────────────────────────────────────────────────────────
+# We ship BOTH variants; select per build with the NX809J_MINIMAL env/var:
+#   NX809J_MINIMAL=true  (default) → de-Googled MINIMAL: AOSP apps + Trebuchet,
+#        ONLY Play Store + GMS Core (Play Integrity). WITH_GMS:=false stops
+#        common_full_phone from adding a Google-app tier; gms_core.mk adds the core.
+#   NX809J_MINIMAL=false           → FULL Pixel GApps (gms_full) incl. Google Dialer.
+NX809J_MINIMAL ?= true
 
-# Inherit common LineageOS configuration
+ifeq ($(NX809J_MINIMAL),true)
+# de-Googled: no Google-app tier from the base
+WITH_GMS := false
+TARGET_USES_MINI_GAPPS := false
+else
+# full Pixel GApps tier
+TARGET_USES_MINI_GAPPS := false
+endif
+
+# Inherit common LineageOS configuration (brings the AOSP app suite + Trebuchet)
 $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
+
+ifeq ($(NX809J_MINIMAL),true)
+# Core GApps only (Play Store + GMS Core + GSF) — everything else stays AOSP.
+$(call inherit-product, device/nubia/NX809J/gms_core.mk)
+# Guarantee the AOSP replacements are present (idempotent if the base already adds them).
+PRODUCT_PACKAGES += \
+    Launcher3QuickStep \
+    webview \
+    Contacts \
+    messaging \
+    Etar \
+    Jelly \
+    DeskClock \
+    Gallery2 \
+    LatinIME
+endif
 
 # Device identifiers
 PRODUCT_NAME := evolution_NX809J
@@ -44,7 +74,15 @@ BUILD_FINGERPRINT := nubia/NX809J/NX809J:16/BP2A.250605.031.A3/V11.0.16:user/rel
 #  - Dialer: swap Google Dialer for the LineageOS Dialer (built-in auto call recording)
 #  - bcr: drop Basic Call Recorder (the LineageOS Dialer records calls itself)
 # (Google Contacts kept intentionally.)
-PRODUCT_PACKAGES := $(filter-out Aperture ApertureLensLauncher CalculatorGooglePrebuilt_85006267 FilesPrebuilt GoogleDialer bcr, $(PRODUCT_PACKAGES))
+# Aperture/Files/Calculator are de-bloated in BOTH variants (we ship NubiaCamera).
+PRODUCT_PACKAGES := $(filter-out Aperture ApertureLensLauncher CalculatorGooglePrebuilt_85006267 FilesPrebuilt, $(PRODUCT_PACKAGES))
 PRODUCT_PACKAGES += \
-    ExactCalculator \
+    ExactCalculator
+
+ifeq ($(NX809J_MINIMAL),true)
+# de-Googled MINIMAL only: swap Google Dialer for the LineageOS Dialer (auto call recording).
+PRODUCT_PACKAGES := $(filter-out GoogleDialer bcr, $(PRODUCT_PACKAGES))
+PRODUCT_PACKAGES += \
     Dialer
+endif
+# FULL keeps Google Dialer (from gms_full.mk) + Google Photos — per request.
