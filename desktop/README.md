@@ -84,3 +84,12 @@ ships KernelSU-Next, so the wireless-debugging pairing flow in Shizuku's docs is
 Starting the server from `init` as `user shell` instead was considered and rejected: under SELinux
 enforcing it would need a bespoke system_ext domain with close to system_server reach, which is a
 large attack surface for an optional feature. Running it from KSU keeps it opt-in and reversible.
+
+## Building from a clone
+
+Both APKs are `.gitignore`'d — they are the upstream authors' binaries and are not mine to
+redistribute inside this tree. A clone therefore has `Android.bp` and this README but no APKs, and
+`device.mk` skips the packages automatically (you get a warning, not a build failure).
+
+To include them, download the exact versions in the table above, verify the checksums, and drop them
+in as `desktop/MagicDesk.apk` and `desktop/Shizuku.apk`. They are then picked up on the next build.

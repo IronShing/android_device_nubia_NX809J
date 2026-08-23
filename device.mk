@@ -54,9 +54,17 @@ PRODUCT_PACKAGES += \
 # MagicDesk asks its own shell service for everything, never the platform. Kept updatable so users
 # can take upstream releases directly. Provenance, checksums, the audit of why Shizuku is required,
 # and the internal-display/app-handle interaction are all in desktop/README.md.
+# Guarded: the two APKs are third-party release binaries and are .gitignore'd, so a fresh clone of
+# this tree does NOT contain them. Without this guard the build fails on a missing source for anyone
+# who clones and builds. Drop the two APKs into desktop/ (checksums and download links are in
+# desktop/README.md) and they are picked up automatically.
+ifneq ($(wildcard $(LOCAL_PATH)/desktop/MagicDesk.apk),)
 PRODUCT_PACKAGES += \
     MagicDesk \
     Shizuku
+else
+$(warning NX809J: desktop/MagicDesk.apk absent - building without MagicDesk/Shizuku. See desktop/README.md)
+endif
 
 # OpenEUICC — privileged eSIM LPA (Local Profile Assistant) for the internal
 # removable eUICC. Builds from packages/apps/OpenEUICC as a platform-signed
