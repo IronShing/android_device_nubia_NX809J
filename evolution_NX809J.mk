@@ -29,9 +29,14 @@ ifeq ($(NX809J_MINIMAL),true)
 # de-Googled: no Google-app tier from the base
 WITH_GMS := false
 TARGET_USES_MINI_GAPPS := false
+# Say what this build actually is. WITH_GMS=false above only suppresses the Google-app TIER;
+# gms_core.mk below still adds Play Store + GMS Core + GSF, so the upstream default of "-Vanilla"
+# (which means no Google at all) would be actively misleading to anyone choosing a build by name.
+EVO_VERSION_SUFFIX := MinimalGApps
 else
 # full Pixel GApps tier
 TARGET_USES_MINI_GAPPS := false
+EVO_VERSION_SUFFIX := FullGApps
 endif
 
 # Inherit common LineageOS configuration (brings the AOSP app suite + Trebuchet)
