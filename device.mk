@@ -49,6 +49,15 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     ShowAppHandleOverlay
 
+# Desktop environment: MagicDesk (third-party, MIT) + Shizuku, its only privilege transport.
+# Ordinary presigned /product/app apps, deliberately NOT privileged and NOT platform-signed —
+# MagicDesk asks its own shell service for everything, never the platform. Kept updatable so users
+# can take upstream releases directly. Provenance, checksums, the audit of why Shizuku is required,
+# and the internal-display/app-handle interaction are all in desktop/README.md.
+PRODUCT_PACKAGES += \
+    MagicDesk \
+    Shizuku
+
 # OpenEUICC — privileged eSIM LPA (Local Profile Assistant) for the internal
 # removable eUICC. Builds from packages/apps/OpenEUICC as a platform-signed
 # system_ext priv-app (+ liblpac-jni native + privapp permission whitelist).
@@ -138,12 +147,22 @@ PRODUCT_SYSTEM_EXT_PROPERTIES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/rootdir/vendor/etc/ueventd.rc:$(TARGET_COPY_OUT_VENDOR)/etc/ueventd.rc
 
-# --- TEMP DIAGNOSTIC (remove before ship): cold-reset-safe boot-progress markers ---
-# 00-bootmark.rc writes "MARKED" to distinct offsets of /dev/block/by-name/rawdump at each
-# boot milestone; EDL-read 0/rawdump after a hang to see how far source-vendor boot got.
-PRODUCT_COPY_FILES += \
-    $(LOCAL_PATH)/bootmark/00-bootmark.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/00-bootmark.rc \
-    $(LOCAL_PATH)/bootmark/bootmark_byte:$(TARGET_COPY_OUT_SYSTEM)/etc/bootmark_byte
+# --- boot diagnostics: DELIBERATELY NOT SHIPPED (removed 2026-08-22) ---
+# bootmark/00-bootmark.rc is kept in the tree for future boot debugging but is no longer copied
+# into the image. It said "remove before ship" and never was, and it shipped in every public build
+# with real consequences, all verified live on the 20260820 release:
+#   * services `klog` and `logcatcap` crash-loop forever -- exit 127 and 1 respectively, restarted
+#     ~13x per minute. They produced ~80% of all logcat output (3003 of 3767 lines in 60 s), which
+#     is why the log buffer only held about a minute and users' bug reports kept missing the moment
+#     of failure.
+#   * that respawn loop sets sys.init.updatable_crashing=1, so Android's crash-recovery
+#     (flags_health_check) runs continuously. Repeated escalation of that path can end in a reboot.
+#   * `write /proc/sys/kernel/dmesg_restrict 0` lowered a kernel security setting for every user.
+#   * `setprop persist.sys.usb.config adb` forced USB into adb mode persistently on every boot.
+# To debug a boot hang again, add these two lines back for that build only.
+#PRODUCT_COPY_FILES += \
+#    $(LOCAL_PATH)/bootmark/00-bootmark.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/00-bootmark.rc \
+#    $(LOCAL_PATH)/bootmark/bootmark_byte:$(TARGET_COPY_OUT_SYSTEM)/etc/bootmark_byte
 
 # Firmware-partition mount-point dirs (firmware_mnt/bt_firmware/soccp_firmware): created
 # via BOARD_*_EXTRA_DIRS / soong fsgen (see BoardConfig.mk) — NOT PRODUCT_COPY_FILES, since
@@ -243,6 +262,25 @@ PRODUCT_PACKAGES += \
     dt2w_uewake_arm.rc
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/dt2w/dt2w_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/dt2w_uewake.kl
+
+# --- Magic Slider bridge (slider_uewake) ---
+# The physical slider reports EV_SW / SW_PEN_INSERTED on the gpio-keys_nubia input device.
+# On stock, ZTE's SlideKeysCtrl (inside their system server) consumes it; an AOSP-based ROM
+# has no such component, so the slider does nothing (reported on XDA). slider_uewake is a
+# system_ext coredomain daemon that watches the switch and publishes sys.rm.slider.state /
+# .event; RedMagicControl decides the action, so no root and no vendor access is needed.
+# NB: the hardware doc says /dev/input/event1 — that is wrong here (event1 is the shoulder
+# SAR sensor, the slider is event3), so the daemon scans by device name instead.
+PRODUCT_PACKAGES += \
+    slider_uewake
+
+# PRODUCT_PRODUCT_PROPERTIES, not PRODUCT_PROPERTY_OVERRIDES: the latter does not emit
+# `persist.`-prefixed properties into any build.prop, so the gate below was never set and
+# slider_uewake -- which is `disabled` and started only `on property:...enabled=1` -- never
+# started at all. Verified on hardware 2026-08-20: getprop returned empty and the service was
+# absent. dt2w defaults its own gate the same way (see persist.sys.dt2w.enabled above).
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.sys.rm.slider.enabled=1
 
 # --- Deep-sleep ultrasonic-FP wake+unlock (fp_uewake) ---
 # The ultrasonic UDFPS works screen-on; in deep sleep the touch driver reports an

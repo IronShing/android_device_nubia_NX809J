@@ -80,10 +80,49 @@ public class SettingsActivity extends Activity {
         addSwitch(root, getString(R.string.tile_fpwake), "persist.sys.fp_wake.enabled");
         addSwitch(root, getString(R.string.tile_dt2w), "persist.sys.dt2w.enabled");
 
+        // ---- Battery ----
+        header(root, "Battery");
+        dozeOffline(root);
+        note(root, "When the phone has no network at all — airplane mode with WiFi off, or no "
+                + "signal — Android still wakes it every few minutes to run background work it "
+                + "cannot actually do. This makes it stay asleep longer in that situation.\n\n"
+                + "It switches itself off the moment any network appears, so notifications are "
+                + "never held back. Airplane mode with WiFi ON still receives push, so it stays "
+                + "off there too.\n\n"
+                + "Alarms, timers and reminders always ring, on or off. Only offline background "
+                + "work (local backups, indexing) waits longer. Expect a small saving.");
+        minutesRow(root, "Light doze window", OfflineDoze.KEY_LIGHT_IDLE, OfflineDoze.DEF_LIGHT_IDLE);
+        minutesRow(root, "Light doze maximum", OfflineDoze.KEY_LIGHT_MAX, OfflineDoze.DEF_LIGHT_MAX);
+        minutesRow(root, "Deep doze maintenance", OfflineDoze.KEY_IDLE_PENDING, OfflineDoze.DEF_IDLE_PENDING);
+        minutesRow(root, "Deep doze maximum", OfflineDoze.KEY_MAX_PENDING, OfflineDoze.DEF_MAX_PENDING);
+        note(root, "How long the phone sleeps between wake-ups while offline. Android's own "
+                + "values are 5 / 30 / 5 / 10 min — higher means fewer wake-ups. These only "
+                + "apply while offline and only while the switch above is on.");
+        batteryStatsRow(root);
+
+        // ---- Desktop ----
+        header(root, "Desktop");
+        desktopRow(root);
+
         ScrollView sv = new ScrollView(this);
         sv.addView(root);
         setContentView(sv);
         setTitle(R.string.app_name);
+    }
+
+    /**
+     * Section-header colour taken from the theme, not hardcoded.
+     *
+     * The app used a fixed #8AB4F8 while it was pinned to a light-only theme. Now that it follows
+     * the system day/night setting, a fixed light-blue would be low-contrast on the light
+     * background, so resolve the theme's own accent and fall back to the old value.
+     */
+    private int accentColor() {
+        final android.util.TypedValue tv = new android.util.TypedValue();
+        if (getTheme().resolveAttribute(android.R.attr.colorAccent, tv, true) && tv.data != 0) {
+            return tv.data;
+        }
+        return 0xFF8AB4F8;
     }
 
     // ---------- section header ----------
@@ -91,7 +130,7 @@ public class SettingsActivity extends Activity {
         TextView h = new TextView(this);
         h.setText(text.toUpperCase());
         h.setTextSize(13);
-        h.setTextColor(0xFF8AB4F8);
+        h.setTextColor(accentColor());
         h.setPadding(0, dp(20), 0, dp(6));
         root.addView(h);
     }
@@ -152,21 +191,82 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------- magic slider (stock Settings.System key) ----------
+    /**
+     * Magic slider.
+     *
+     * The old version of this row wrote Settings.System "fourth_physical_key_function_value" — the
+     * key stock RedMagicOS uses. That does nothing here: the handler for it (SlideKeysCtrl) lives
+     * inside ZTE's own system server, which an AOSP-based ROM does not have, so every option in
+     * that dropdown was inert. It is now driven by our own slider_uewake daemon + SliderWatcher.
+     *
+     * We still force the stock key to 0 ("no system handling"), which is what the hardware
+     * reference recommends when something else owns the switch — harmless if nothing reads it.
+     */
     private void sliderRow(LinearLayout root) {
-        final String KEY = "fourth_physical_key_function_value";
-        final String[] names = {"Disabled", "Camera", "Game Space", "Sound controls", "Launch app", "Shortcut"};
-        final int[] vals = {0, 1, 2, 3, 16, 17};
-        LinearLayout row = labelledRow(root, "Slider action");
-        Spinner sp = new Spinner(this);
-        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
-        int curv = Settings.System.getInt(getContentResolver(), KEY, 2);
-        sp.setSelection(clamp(idxOf(vals, curv), 0, names.length - 1));
-        sp.setOnItemSelectedListener(new SimpleSel() {
+        // Tell the (absent) stock handler to keep its hands off.
+        try { Settings.System.putInt(getContentResolver(), "fourth_physical_key_function_value", 0); }
+        catch (Exception ignored) {}
+
+        // Kept short on purpose: this Spinner shares a horizontal row with its label, so a long
+        // item ("Launch an app, home on slide back") forces the Spinner wide and squeezes the
+        // "Slider action" text to a sliver. The row now splits 50/50 as well (see below).
+        final String[] modeNames = {"Do nothing", "Flashlight", "Launch app", "App + home"};
+        final int[] modeVals = {SliderWatcher.MODE_NOTHING, SliderWatcher.MODE_TORCH,
+                                SliderWatcher.MODE_LAUNCH, SliderWatcher.MODE_LAUNCH_HOME};
+
+        LinearLayout modeRow = labelledRow(root, "Slider action");
+        final Spinner mode = new Spinner(this);
+        mode.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modeNames));
+        mode.setSelection(clamp(idxOf(modeVals, parseInt(Prop.get(SliderWatcher.PROP_MODE, "0"), 0)),
+                                0, modeNames.length - 1));
+        modeRow.addView(mode, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        // App picker — launchable packages only, sorted by visible label so it is browsable.
+        final java.util.List<String> labels = new java.util.ArrayList<>();
+        final java.util.List<String> pkgs = new java.util.ArrayList<>();
+        try {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent probe = new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+            java.util.List<android.content.pm.ResolveInfo> ris = pm.queryIntentActivities(probe, 0);
+            java.util.Collections.sort(ris, new android.content.pm.ResolveInfo.DisplayNameComparator(pm));
+            for (android.content.pm.ResolveInfo ri : ris) {
+                String p = ri.activityInfo.packageName;
+                if (pkgs.contains(p)) continue;                 // one entry per package
+                pkgs.add(p);
+                labels.add(String.valueOf(ri.loadLabel(pm)));
+            }
+        } catch (Throwable t) {
+            // Fall back to a bare list rather than losing the whole panel.
+        }
+
+        LinearLayout appRow = labelledRow(root, "App to launch");
+        final Spinner app = new Spinner(this);
+        app.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                labels.isEmpty() ? new String[]{"(no apps found)"} : labels.toArray(new String[0])));
+        int cur = pkgs.indexOf(Prop.get(SliderWatcher.PROP_APP, ""));
+        if (cur >= 0) app.setSelection(cur);
+        // Same 50/50 split as the mode row: app labels can be long and would otherwise crush the
+        // "App to launch" text.
+        appRow.addView(app, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        mode.setOnItemSelectedListener(new SimpleSel() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                try { Settings.System.putInt(getContentResolver(), KEY, vals[pos]); } catch (Exception e) {}
+                Prop.set(SliderWatcher.PROP_MODE, String.valueOf(modeVals[pos]));
             }
         });
-        row.addView(sp);
+        app.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                if (pos >= 0 && pos < pkgs.size()) Prop.set(SliderWatcher.PROP_APP, pkgs.get(pos));
+            }
+        });
+
+        note(root, "On stock, the slider opens Game Space. That handler is part of RedMagic's own "
+                + "system software and does not exist here, so the slider does nothing until you "
+                + "give it a job above.\n\n"
+                + "It fires once per slide: pick \"Launch an app\" to open something when you slide "
+                + "towards the game position, or the third option to also return to the home screen "
+                + "when you slide back.");
     }
 
     // ---------- haptics: intensity + test ----------
@@ -193,6 +293,76 @@ public class SettingsActivity extends Activity {
             Prop.set("sys.rm.haptic_test", Long.toString(System.currentTimeMillis()));
         });
         root.addView(test);
+    }
+
+    // ---------- battery-stats wakeup (read by our patched PeriodicJobManager) ----------
+    // Settings refreshes its battery chart hourly with setExactAndAllowWhileIdle(RTC_WAKEUP) — an
+    // alarm class Doze is NOT allowed to defer, which makes it the largest idle waker on a stock
+    // build and immune to every Doze setting above it in this screen.
+    private void batteryStatsRow(LinearLayout root) {
+        final String key = "persist.sys.rm.batteryjob_hours";
+        final String[] names = {"Hourly (stock)", "Every 2 hours", "Every 4 hours",
+                                "Every 6 hours", "Every 12 hours", "Off"};
+        final String[] vals = {"1", "2", "4", "6", "12", "0"};
+
+        LinearLayout row = labelledRow(root, "Battery stats refresh");
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        sp.setSelection(idxOfValue(vals, Prop.get(key, "1")));
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(key, vals[pos]);
+            }
+        });
+        row.addView(sp);
+
+        note(root, "Settings wakes the phone every hour, on the hour, just to refresh the battery "
+                + "usage chart. It is exempt from Doze, so the settings above cannot defer it — on "
+                + "a night on the desk that is around nine wake-ups on its own.\n\n"
+                + "Lowering this is safe; the only effect is that the battery chart updates less "
+                + "often. \"Off\" stops the chart accumulating new history.");
+    }
+
+    private static int idxOfValue(String[] vals, String v) {
+        for (int i = 0; i < vals.length; i++) if (vals[i].equals(v)) return i;
+        return 0;
+    }
+
+    // ---------- desktop windowing (OverlayManager, not a property) ----------
+    private void desktopRow(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "Desktop on the phone screen");
+        final Switch sw = new Switch(this);
+        sw.setChecked(DesktopIntegration.isOnDeviceDesktopEnabled(this));
+        sw.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
+            private boolean mReverting;
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton v, boolean on) {
+                if (mReverting) return;
+                if (!DesktopIntegration.setOnDeviceDesktopEnabled(SettingsActivity.this, on)) {
+                    // Don't leave the switch showing a state we failed to apply.
+                    mReverting = true;
+                    v.setChecked(!on);
+                    mReverting = false;
+                }
+            }
+        });
+        row.addView(sw);
+
+        note(root, "Turns on Android's desktop windowing for this phone's own screen — resizable, "
+                + "overlapping windows instead of one app at a time.\n\n"
+                + "It also brings back the white bar across the top of fullscreen apps. That bar is "
+                + "desktop windowing's own window control, so it cannot be hidden on its own — the "
+                + "two are one switch, and this ROM ships with both off. Expect the interface to "
+                + "reload when you change this.\n\n"
+                + "A monitor plugged into USB-C does not need this: external displays get desktop "
+                + "windowing either way.");
+
+        if (DesktopIntegration.isInstalled(this, DesktopIntegration.MAGICDESK_PKG)) {
+            note(root, "MagicDesk is installed. It needs Shizuku running to do anything — open "
+                    + "Shizuku and use Start via root (this ROM has root, so you can skip the "
+                    + "wireless-debugging pairing in their instructions). MagicDesk is a separate "
+                    + "open-source project; report its bugs to that project, not to this ROM.");
+        }
     }
 
     // ---------- reusable ----------
@@ -248,6 +418,48 @@ public class SettingsActivity extends Activity {
     }
 
     private void bumpRev() { Prop.set("sys.rm.settings_rev", Long.toString(System.currentTimeMillis())); }
+
+    // ---------- offline doze ----------
+    private void dozeOffline(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "Sleep harder when offline");
+        Switch sw = new Switch(this);
+        sw.setChecked(Prop.getBool(OfflineDoze.KEY_ENABLED, OfflineDoze.DEF_ENABLED));
+        sw.setOnCheckedChangeListener((v, on) -> {
+            Prop.set(OfflineDoze.KEY_ENABLED, on ? "1" : "0");
+            OfflineDoze.reapply(this);
+        });
+        row.addView(sw);
+    }
+
+    /** Duration picker in minutes; writes the value (not the index) so the prop reads plainly. */
+    private void minutesRow(LinearLayout root, String title, final String key, final int def) {
+        final int[] mins = {5, 10, 15, 20, 30, 45, 60, 90, 120};
+        String[] names = new String[mins.length];
+        for (int i = 0; i < mins.length; i++) names[i] = mins[i] + " min";
+
+        LinearLayout row = labelledRow(root, title);
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        sp.setSelection(idxOf(mins, OfflineDoze.minutes(key, def)));
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(key, Integer.toString(mins[pos]));
+                // Takes effect immediately if we are offline right now.
+                OfflineDoze.reapply(SettingsActivity.this);
+            }
+        });
+        row.addView(sp);
+    }
+
+    /** Small caption under a control. */
+    private void note(LinearLayout root, String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(12);
+        tv.setAlpha(0.7f);
+        tv.setPadding(0, 0, 0, dp(8));
+        root.addView(tv);
+    }
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
     private static int parseInt(String s, int def) { try { return Integer.parseInt(s.trim()); } catch (Exception e) { return def; } }

@@ -19,3 +19,13 @@
 # Deep-sleep ultrasonic-FP wake+unlock bridge — clean system_ext coredomain
 # (netlink + uinput only). See fp_uewake.te.
 /system_ext/bin/fp_uewake    u:object_r:fp_uewake_exec:s0
+
+# Without these the binaries keep the default system_file label, init_daemon_domain() cannot
+# perform the domain transition, and under ENFORCING init fails with
+#   avc: denied { entrypoint } ... scontext=u:r:hwcontrol:s0 tcontext=u:object_r:system_file:s0
+#   cannot execv('/system_ext/bin/hwcontrol'): Permission denied  -> exited with status 127
+# init then retries every 5s forever. Observed live on the shipped 20260816 EvoX build: auto-fan
+# (and everything else hwcontrol applies) silently dead, plus a permanent 5s respawn loop that
+# trips "process with updatable components exited 4 times".
+/system_ext/bin/hwcontrol       u:object_r:hwcontrol_exec:s0
+/system_ext/bin/slider_uewake   u:object_r:slider_uewake_exec:s0

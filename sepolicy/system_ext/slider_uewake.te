@@ -1,0 +1,20 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# System-side (coredomain) domain for the Magic Slider bridge
+# (/system_ext/bin/slider_uewake). It only reads the gpio-keys_nubia input device and
+# publishes sys.rm.slider.* — it launches nothing and touches no vendor node, so the
+# action policy stays in RedMagicControl where the UI is.
+
+type slider_uewake, domain, coredomain;
+type slider_uewake_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(slider_uewake)
+
+# Read the slider switch (EV_SW / SW_PEN_INSERTED) from /dev/input/event*.
+allow slider_uewake input_device:dir r_dir_perms;
+allow slider_uewake input_device:chr_file r_file_perms;
+
+# Publish slider state. rm_ctrl_prop is the existing system_internal_prop used by the
+# RedMagic control surface (see hwcontrol.te); the app side already has set_prop on it.
+set_prop(slider_uewake, rm_ctrl_prop)

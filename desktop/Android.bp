@@ -1,0 +1,63 @@
+// Desktop-mode user-facing apps: MagicDesk + its one hard dependency, Shizuku.
+//
+// MagicDesk (io.github.mekhontsev.magicdesk, MIT) is a third-party desktop environment for
+// Android 15+ — real overlapping resizable windows, taskbar, start menu, desktop icons, widgets,
+// keyboard/mouse. Its author develops it on this exact device, so it already drives the RedMagic
+// fan, pump, bypass charging and temperature interfaces.
+//
+// WHY BOTH, AND WHY NOT PRIVILEGED
+//   MagicDesk does all privileged work through ONE authorized shell service, bound via
+//   Shizuku.bindUserService(). Audited (v1.7.0): there is no su/root path and no app-UID fallback
+//   in the source — the Shizuku transport is the only one. So preinstalling MagicDesk alone would
+//   ship an app that cannot do anything, and Shizuku has to come with it.
+//
+//   Neither is privileged and neither is platform-signed. Making MagicDesk a priv-app would not
+//   help: it never asks the platform for anything, it asks its shell service. Both stay in
+//   /product/app as ordinary presigned apps.
+//
+// UPDATABLE ON PURPOSE
+//   /product/app + the authors' own release signatures means a user can install a newer release
+//   straight from either project's GitHub over the top, and it lands in /data as a normal update.
+//   That matters here: MagicDesk shipped 16 releases in its first three weeks. We are not the
+//   distribution channel for it and should not become a bottleneck.
+//
+// Provenance and checksums: see README.md in this directory. Both binaries are the authors'
+// unmodified release APKs.
+
+android_app_import {
+    name: "MagicDesk",
+    apk: "MagicDesk.apk",
+    presigned: true,
+    preprocessed: true,      // targetSdk 36 >= 30, v2/v3-signed: install as-is
+    // Both APKs are ordinary upstream release builds: extractNativeLibs=true with compressed
+    // lib/arm64-v8a/*.so. check_prebuilt_presigned_apk.py rejects compressed JNI libs in a
+    // preprocessed APK, but that check targets apps whose libs must be mmap'd in place
+    // (extractNativeLibs=false); with extraction enabled the platform unpacks them at install and
+    // compressed is the correct, expected layout. Re-zipaligning instead is NOT an option: it would
+    // invalidate the authors' v2/v3 signatures, and preserving those verbatim is the entire reason
+    // these are presigned prebuilts.
+    skip_preprocessed_apk_checks: true,
+    product_specific: true,  // -> /product/app/MagicDesk
+    dex_preopt: {
+        enabled: false,
+    },
+}
+
+android_app_import {
+    name: "Shizuku",
+    apk: "Shizuku.apk",
+    presigned: true,
+    preprocessed: true,
+    // Both APKs are ordinary upstream release builds: extractNativeLibs=true with compressed
+    // lib/arm64-v8a/*.so. check_prebuilt_presigned_apk.py rejects compressed JNI libs in a
+    // preprocessed APK, but that check targets apps whose libs must be mmap'd in place
+    // (extractNativeLibs=false); with extraction enabled the platform unpacks them at install and
+    // compressed is the correct, expected layout. Re-zipaligning instead is NOT an option: it would
+    // invalidate the authors' v2/v3 signatures, and preserving those verbatim is the entire reason
+    // these are presigned prebuilts.
+    skip_preprocessed_apk_checks: true,
+    product_specific: true,  // -> /product/app/Shizuku
+    dex_preopt: {
+        enabled: false,
+    },
+}

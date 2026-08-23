@@ -131,4 +131,23 @@
     <!-- 144Hz: default peak + min refresh so the panel runs at its max -->
     <integer name="config_defaultPeakRefreshRate">144</integer>
     <integer name="config_defaultRefreshRate">144</integer>
+
+    <!-- Power menu. AOSP already implements the logout action end-to-end (GlobalActionsDialogLite
+         LogoutAction -> UserLogoutInteractor.logOut(), which kills the current user's processes and
+         returns to the owner's lock screen) but "logout" is simply absent from the default
+         config_globalActionsList, so it can never appear. Requested on XDA (#247) by a heavy
+         multi-user user. Adding it is safe for single-user devices: the entry is gated at runtime on
+         mLogoutInteractor.isLogoutEnabled(), which is false unless multi-user logout is actually
+         available (DevicePolicyManager.setLogoutEnabled / secondary user present), so nothing new
+         shows up for everyone else. This list is otherwise the AOSP default - EvolutionX does not
+         customise it, so no entries are lost by overriding here. -->
+    <string-array translatable="false" name="config_globalActionsList">
+        <item>emergency</item>
+        <item>lockdown</item>
+        <item>power</item>
+        <item>restart</item>
+        <item>screenshot</item>
+        <item>bugreport</item>
+        <item>logout</item>
+    </string-array>
 </resources>

@@ -1,0 +1,12 @@
+// NX809J Magic Slider bridge. Mirrors dt2w_uewake / fp_uewake: a coredomain daemon on
+// /system_ext that does only platform work (read the gpio-keys_nubia switch, publish the
+// state as a property). ZTE's own consumer (SlideKeysCtrl) lives in their system server and
+// does not exist on an AOSP-based ROM, which is why the slider does nothing without this.
+cc_binary {
+    name: "slider_uewake",
+    srcs: ["slider_uewake.c"],
+    shared_libs: ["liblog"],
+    cflags: ["-Wall", "-Werror"],
+    init_rc: ["slider_uewake.rc"],
+    system_ext_specific: true,
+}

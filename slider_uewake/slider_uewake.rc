@@ -1,0 +1,19 @@
+# slider_uewake — Magic Slider bridge (service block).
+# Installs to /system_ext so init's coredomain type_transition fires (same as dt2w_uewake).
+# Reads the gpio-keys_nubia EV_SW/SW_PEN_INSERTED switch and publishes sys.rm.slider.*;
+# RedMagicControl decides what the slider actually does. Gated on persist.sys.rm.slider.enabled
+# so it can be turned off without a reflash.
+service slider_uewake /system_ext/bin/slider_uewake
+    class late_start
+    user system
+    group system input
+    disabled
+
+on property:persist.sys.rm.slider.enabled=1
+    start slider_uewake
+
+on property:persist.sys.rm.slider.enabled=0
+    stop slider_uewake
+
+on property:sys.boot_completed=1 && property:persist.sys.rm.slider.enabled=1
+    start slider_uewake

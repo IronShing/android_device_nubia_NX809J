@@ -42,14 +42,39 @@ namespace {
 //                0 = the top level → GPU held at max. This is the vendor-proven GPU-boost opcode;
 //                the kgsl freq nodes are SELinux-read-blocked from shell so it can't be read back
 //                live, but the perf HAL (which owns kgsl) applies it.
-constexpr int kBoostArgs[] = {
-    0x40800000, 2496,
-    0x42804000, 0,
-    0x63C5C000, 16,
-        1, 2400000, 2, 2400000, 3, 2400000, 4, 2400000,
-        5, 2400000, 6, 2400000, 7, 2400000, 8, 2400000,
-};
-constexpr int kBoostNumArgs = sizeof(kBoostArgs) / sizeof(kBoostArgs[0]);
+// ---- BUGFIX (XDA #236: "v2 only maxes GPU, CPU behaves same as v1.1/1.2") -------------------
+// perf_lock_acq() takes a FLAT ARRAY OF (opcode, value) PAIRS. The old table tried to encode the
+// msm_performance multi-core request as `0x63C5C000, <count>, <cpu>, <freq>, <cpu>, <freq>, ...`,
+// which breaks that contract: the HAL read (0x63C5C000,16) and then parsed (1,2400000),
+// (2,2400000) ... as opcode/value pairs. Opcodes 1..8 are not real resources, so everything after
+// the first two pairs was garbage — which is exactly why only the GPU pair (0x42804000) took
+// effect. Removed.
+//
+// The remaining reason the CPU still felt unboosted: 0x40800000 is cluster 0 only. On SM8850
+// (8 Elite Gen 5) policy0 = cores 0-5 and policy6 = the PRIME pair (cores 6-7) — and the prime
+// pair is what actually carries game frame work. Cluster index lives in the low nibble of byte 2
+// of the opcode (cluster N = 0x408000N0), so cluster 1 = 0x40800010.
+//
+// Values are property-tunable so they can be validated/tuned on-device without a rebuild:
+//   persist.sys.rm.gameperf.c0_mhz   (default 2496) - cluster 0 min freq, MHz
+//   persist.sys.rm.gameperf.c1_mhz   (default 3000) - cluster 1 / prime min freq, MHz
+//   persist.sys.rm.gameperf.gpu_lvl  (default 0)    - kgsl min power level (0 = top/highest freq)
+// The perf HAL rounds each freq to the nearest supported OPP. Unknown opcodes are ignored by the
+// HAL, so an inapplicable cluster opcode is harmless.
+std::vector<int> BuildBoostArgs() {
+  auto prop = [](const char* k, int def) {
+    return android::base::GetIntProperty(k, def, 0, 6000);
+  };
+  const int c0 = prop("persist.sys.rm.gameperf.c0_mhz", 2496);
+  const int c1 = prop("persist.sys.rm.gameperf.c1_mhz", 3000);
+  const int gpu = prop("persist.sys.rm.gameperf.gpu_lvl", 0);
+  std::vector<int> a;
+  a.push_back(0x40800000); a.push_back(c0);   // cluster 0 (cores 0-5) min freq
+  a.push_back(0x40800010); a.push_back(c1);   // cluster 1 (prime cores 6-7) min freq
+  a.push_back(0x42804000); a.push_back(gpu);  // GPU min power level (0 = max)
+  LOG(INFO) << "gameperfd: boost args c0=" << c0 << "MHz c1=" << c1 << "MHz gpu_lvl=" << gpu;
+  return a;
+}
 
 using perf_lock_acq_t = int (*)(int handle, int duration, int list[], int numArgs);
 using perf_lock_rel_t = int (*)(int handle);
@@ -165,7 +190,8 @@ int main(int argc, char** argv) {
   }
 
   if (argc > 1 && std::string(argv[1]) == "test") {
-    int handle = g_acq(0, 30000, const_cast<int*>(kBoostArgs), kBoostNumArgs);
+    std::vector<int> args = BuildBoostArgs();
+    int handle = g_acq(0, 30000, args.data(), static_cast<int>(args.size()));
     LOG(ERROR) << "gameperfd: TEST acquired perf lock handle=" << handle;
     sleep(28);
     if (handle > 0) g_rel(handle);
@@ -194,8 +220,10 @@ int main(int argc, char** argv) {
     std::string v = android::base::GetProperty("persist.sys.power_mode_perf", "0");
     if (v != last) {
       if (v == "1" && handle <= 0) {
-        // duration 0 = hold until explicitly released.
-        handle = g_acq(0, 0, const_cast<int*>(kBoostArgs), kBoostNumArgs);
+        // duration 0 = hold until explicitly released. Args are rebuilt per-acquire so a prop
+        // change takes effect on the next game launch (no reboot needed while tuning).
+        std::vector<int> args = BuildBoostArgs();
+        handle = g_acq(0, 0, args.data(), static_cast<int>(args.size()));
         SetNetAffinity(true);
         CoolingBoost(true);
         LOG(INFO) << "gameperfd: boost ON, handle=" << handle;

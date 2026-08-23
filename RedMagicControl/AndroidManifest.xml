@@ -6,19 +6,27 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- Desktop integration (see DesktopIntegration.java). All signature-level, so the platform
+         certificate grants them; no privapp-permissions allowlist entry is required.
+         MANAGE_APP_OPS_MODES  - pre-grant MagicDesk's display-over-apps op
+         CHANGE_OVERLAY_PACKAGES + INTERACT_ACROSS_USERS - toggle the on-device desktop RRO -->
+    <uses-permission android:name="android.permission.MANAGE_APP_OPS_MODES" />
+    <uses-permission android:name="android.permission.CHANGE_OVERLAY_PACKAGES" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS" />
 
     <application
+        android:name=".RmApp"
         android:label="@string/app_name"
         android:icon="@drawable/ic_rmcontrol"
         android:persistent="true"
-        android:theme="@android:style/Theme.DeviceDefault.Settings">
+        android:theme="@android:style/Theme.DeviceDefault.DayNight">
 
         <!-- Settings screen -->
         <activity
             android:name=".SettingsActivity"
             android:label="@string/app_name"
             android:exported="true"
-            android:theme="@android:style/Theme.DeviceDefault.Settings">
+            android:theme="@android:style/Theme.DeviceDefault.DayNight">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
