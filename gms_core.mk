@@ -12,11 +12,23 @@
 # The app packages below are soong modules (vendor/gms/.../Android.mk) that
 # install only when listed here; the blob .mk inherits copy config files only.
 
+# A17 (EvoX cnb): GmsCore is now a PREBUILT APEX, not a standalone app.
+# vendor/gms/apex/Android.bp declares prebuilt_apex "com.google.android.gmssystem"
+# (file com.google.android.gmssystem.prodvic.apex, 155MB) which CONTAINS
+# PrebuiltGmsCoreVic as an app. On A16 (bka) PrebuiltGmsCoreVic was a standalone APK at
+# vendor/gms/product/packages/privileged_apps/PrebuiltGmsCore/PrebuiltGmsCoreVic.apk.
+# In cnb that APK is GONE and vendor/gms/apex/apps/ ships only a stub
+# `android_app { name: "PrebuiltGmsCoreVic" }` with a ZERO-BYTE AndroidManifest.xml, so
+# listing the bare app here makes manifest_fixer fail:
+#     error: no element found: line 1, column 0
+# EvoX's own gms_pico.mk:23 uses the apex name, so follow that.
+DISABLE_DEXPREOPT_CHECK := true
+
 PRODUCT_PACKAGES += \
     ConfigUpdater \
     Phonesky \
     GoogleServicesFramework \
-    PrebuiltGmsCoreVic \
+    com.google.android.gmssystem.prodvic \
     PrebuiltGmsCoreVic_AdsDynamite \
     PrebuiltGmsCoreVic_CronetDynamite \
     PrebuiltGmsCoreVic_DynamiteLoader \
