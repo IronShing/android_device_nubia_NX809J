@@ -1,0 +1,12 @@
+diff --git a/libs/gui/IGraphicBufferProducer.cpp b/libs/gui/IGraphicBufferProducer.cpp
+index 786a2ae..77dc278 100644
+--- a/libs/gui/IGraphicBufferProducer.cpp
++++ b/libs/gui/IGraphicBufferProducer.cpp
+@@ -957,7 +957,6 @@ public:
+         return mBase->setDequeueTimeout(timeout);
+     }
+ 
+-    status_t extendSlotCount(int size) override { return mBase->extendSlotCount(size); }
+ 
+     status_t setLegacyBufferDrop(bool drop) override {
+         return mBase->setLegacyBufferDrop(drop);

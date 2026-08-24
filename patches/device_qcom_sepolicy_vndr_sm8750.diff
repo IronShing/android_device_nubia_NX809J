@@ -1,0 +1,10 @@
+diff --git a/generic/vendor/canoe/genfs_contexts b/generic/vendor/canoe/genfs_contexts
+index b89aa6292..49cf7efc8 100644
+--- a/generic/vendor/canoe/genfs_contexts
++++ b/generic/vendor/canoe/genfs_contexts
+@@ -289,4 +289,4 @@ genfscon sysfs /devices/virtual/misc/fastrpc-adsp-secure/wakeup38 u:object_r:sys
+ genfscon sysfs /devices/virtual/misc/fastrpc-cdsp/wakeup37 u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/virtual/misc/fastrpc-cdsp-secure/wakeup38 u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/virtual/misc/fastrpc-adsp-secure/wakeup40 u:object_r:sysfs_wakeup:s0
+-genfscon sysfs devices/platform/soc/9800000.qcom,mdss_mdp/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9800000.qcom,mdss_mdp/wakeup u:object_r:sysfs_wakeup:s0

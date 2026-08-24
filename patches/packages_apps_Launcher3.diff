@@ -1,0 +1,155 @@
+diff --git a/quickstep/src/com/android/launcher3/taskbar/PinToTaskbarShortcut.kt b/quickstep/src/com/android/launcher3/taskbar/PinToTaskbarShortcut.kt
+index 628a7c7..02aaf58 100644
+--- a/quickstep/src/com/android/launcher3/taskbar/PinToTaskbarShortcut.kt
++++ b/quickstep/src/com/android/launcher3/taskbar/PinToTaskbarShortcut.kt
+@@ -151,14 +151,14 @@ constructor(
+     private fun sendAccessibilityAnnouncement(shortcutView: View?) {
+         if (
+             shortcutView == null ||
+-                mTarget == null ||
++                (mTarget as Any?) == null ||
+                 !AccessibilityManager.getInstance(mTarget).isEnabled
+         ) {
+             return
+         }
+         val announcementText =
+-            if (isPin) mTarget.getString(R.string.app_added_to_taskbar)
+-            else mTarget.getString(R.string.app_removed_from_taskbar)
++            if (isPin) mTarget!!.getString(R.string.app_added_to_taskbar)
++            else mTarget!!.getString(R.string.app_removed_from_taskbar)
+ 
+         shortcutView.setContentDescription(announcementText)
+         shortcutView.sendAccessibilityEventUnchecked(
+diff --git a/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java b/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java
+index 3ff0bf3..c1abb1f 100644
+--- a/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java
++++ b/quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java
+@@ -53,6 +53,7 @@ import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_N
+ import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_VOICE_INTERACTION_WINDOW_SHOWING;
+ import static com.android.wm.shell.Flags.enableBubbleBar;
+ import static com.android.wm.shell.Flags.enableBubbleBarOnPhones;
++import static com.android.wm.shell.Flags.enableTaskbarOnPhones;
+ import static com.android.wm.shell.Flags.enableTinyTaskbar;
+ 
+ import static java.lang.invoke.MethodHandles.Lookup.PROTECTED;
+@@ -677,7 +678,7 @@ public class TaskbarActivityContext extends BaseTaskbarContext {
+ 
+     /** Returns {@code true} iff a tiny version of taskbar is shown on phone. */
+     public boolean isTinyTaskbar() {
+-        return enableTinyTaskbar() && mDeviceProfile.getDeviceProperties().isPhone() && mDeviceProfile.isTaskbarPresent;
++        return (enableTinyTaskbar() || enableTaskbarOnPhones()) && mDeviceProfile.getDeviceProperties().isPhone() && mDeviceProfile.isTaskbarPresent;
+     }
+ 
+     public boolean isBubbleBarOnPhone() {
+diff --git a/quickstep/src/com/android/quickstep/task/thumbnail/TaskContentView.kt b/quickstep/src/com/android/quickstep/task/thumbnail/TaskContentView.kt
+index dabb20b..5a035c7 100644
+--- a/quickstep/src/com/android/quickstep/task/thumbnail/TaskContentView.kt
++++ b/quickstep/src/com/android/quickstep/task/thumbnail/TaskContentView.kt
+@@ -103,8 +103,14 @@ class TaskContentView @JvmOverloads constructor(context: Context, attrs: Attribu
+     private var activeFocusAnimator: AnimatorSet? = null
+     private var activeHoverAnimator: AnimatorSet? = null
+ 
+-    private val focusBorderColor: Int
+-    private val hoverBorderColor: Int
++    private val focusBorderColor: Int =
++        context.obtainStyledAttributes(attrs, R.styleable.TaskContentView).use {
++            it.getColor(R.styleable.TaskContentView_focusBorderColor, DEFAULT_BORDER_COLOR)
++        }
++    private val hoverBorderColor: Int =
++        context.obtainStyledAttributes(attrs, R.styleable.TaskContentView).use {
++            it.getColor(R.styleable.TaskContentView_hoverBorderColor, DEFAULT_BORDER_COLOR)
++        }
+ 
+     private val focusBorderAnimator: BorderAnimator by lazy {
+         createSimpleBorderAnimator(
+@@ -176,12 +182,6 @@ class TaskContentView @JvmOverloads constructor(context: Context, attrs: Attribu
+ 
+     init {
+         setWillNotDraw(false)
+-        context.obtainStyledAttributes(attrs, R.styleable.TaskContentView).use {
+-            focusBorderColor =
+-                it.getColor(R.styleable.TaskContentView_focusBorderColor, DEFAULT_BORDER_COLOR)
+-            hoverBorderColor =
+-                it.getColor(R.styleable.TaskContentView_hoverBorderColor, DEFAULT_BORDER_COLOR)
+-        }
+     }
+ 
+     override fun onFinishInflate() {
+diff --git a/quickstep/src/com/android/quickstep/views/RecentsViewUtils.kt b/quickstep/src/com/android/quickstep/views/RecentsViewUtils.kt
+index 890ba66..9a39f33 100644
+--- a/quickstep/src/com/android/quickstep/views/RecentsViewUtils.kt
++++ b/quickstep/src/com/android/quickstep/views/RecentsViewUtils.kt
+@@ -37,6 +37,7 @@ import androidx.dynamicanimation.animation.SpringForce
+ import com.android.app.animation.Interpolators.LINEAR
+ import com.android.launcher3.AbstractFloatingView.TYPE_TASK_MENU
+ import com.android.launcher3.AbstractFloatingView.getTopOpenViewWithType
++import com.android.launcher3.views.ActivityContext
+ import com.android.launcher3.Flags.enableDesktopExplodedView
+ import com.android.launcher3.Flags.enableOverviewOnConnectedDisplays
+ import com.android.launcher3.PagedView.INVALID_PAGE
+@@ -601,7 +602,7 @@ class RecentsViewUtils(private val recentsView: RecentsView<*, *>) : DesktopVisi
+     }
+ 
+     private fun getTaskMenu(): TaskMenuView? =
+-        getTopOpenViewWithType(recentsView.mContainer, TYPE_TASK_MENU) as? TaskMenuView
++        getTopOpenViewWithType(recentsView.mContainer as ActivityContext, TYPE_TASK_MENU) as? TaskMenuView
+ 
+     fun taskMenuIsOpen(): Boolean {
+         if (enableOverviewIconMenu()) {
+diff --git a/quickstep/src/com/android/quickstep/views/TaskMenuView.kt b/quickstep/src/com/android/quickstep/views/TaskMenuView.kt
+index da61ab1..58eeaee 100644
+--- a/quickstep/src/com/android/quickstep/views/TaskMenuView.kt
++++ b/quickstep/src/com/android/quickstep/views/TaskMenuView.kt
+@@ -90,7 +90,7 @@ constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int = 0) :
+             recentsViewContainer.deviceProfile.overviewActionsClaimedSpaceBelow
+     }
+     private val minMenuTop by lazy { iconView.height.toFloat() }
+-    private val maxMenuBottom by lazy { taskbarTop - recentsViewContainer.dragLayer.insets.top }
++    private val maxMenuBottom by lazy { taskbarTop - recentsViewContainer.dragLayer.getInsets().top }
+ 
+     init {
+         clipToOutline = true
+@@ -214,7 +214,7 @@ constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int = 0) :
+             else containerView,
+             tempRect,
+         )
+-        val insets = recentsViewContainer.dragLayer.insets
++        val insets = recentsViewContainer.dragLayer.getInsets()
+         val params = layoutParams as BaseDragLayer.LayoutParams
+         params.width =
+             orientationHandler.getTaskMenuWidth(containerView, deviceProfile, stagePosition)
+@@ -258,7 +258,7 @@ constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int = 0) :
+                     orientationHandler.isLayoutNaturalToLauncher &&
+                     isLayoutRtl
+             )
+-                -(recentsViewContainer.dragLayer.width - tempRect.right - insets.right).toFloat()
++                -((recentsViewContainer.dragLayer as android.view.View).width - tempRect.right - insets.right).toFloat()
+             else (tempRect.left - insets.left).toFloat()
+         val thumbnailAlignedY = (tempRect.top - insets.top).toFloat()
+ 
+diff --git a/src/com/android/launcher3/DeviceProfile.java b/src/com/android/launcher3/DeviceProfile.java
+index ce25f40..829187b 100644
+--- a/src/com/android/launcher3/DeviceProfile.java
++++ b/src/com/android/launcher3/DeviceProfile.java
+@@ -31,6 +31,7 @@ import static com.android.launcher3.testing.shared.ResourceUtils.pxFromDp;
+ import static com.android.launcher3.util.OverviewReleaseFlags.enableGridOnlyOverview;
+ import static com.android.wm.shell.Flags.enableBubbleBar;
+ import static com.android.wm.shell.Flags.enableBubbleBarOnPhones;
++import static com.android.wm.shell.Flags.enableTaskbarOnPhones;
+ import static com.android.wm.shell.Flags.enableTinyTaskbar;
+ 
+ import static java.lang.Math.max;
+@@ -282,7 +283,12 @@ public class DeviceProfile {
+         mIsScalableGrid = inv.isScalable && !isVerticalBarLayout() && !isExternalDisplay;
+         // Determine device posture.
+         mInfo = info;
+-        boolean taskbarOrBubbleBarOnPhones = enableTinyTaskbar()
++        // NX809J: enableTinyTaskbar() is fused OFF in this build, but its sibling
++        // enableTaskbarOnPhones() is ENABLED (and SystemUI's navbar already uses it).
++        // Honor it too, so phones with desktop windowing (config_canInternalDisplayHostDesktops)
++        // get a real taskbar (with app drawer) instead of nav-only — required for desktop
++        // mode to launch apps.
++        boolean taskbarOrBubbleBarOnPhones = enableTinyTaskbar() || enableTaskbarOnPhones()
+                 || (enableBubbleBar() && enableBubbleBarOnPhones());
+         isTaskbarPresent =
+                 (mDeviceProperties.isTablet() || (taskbarOrBubbleBarOnPhones && isGestureMode))

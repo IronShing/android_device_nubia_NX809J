@@ -1,0 +1,58 @@
+diff --git a/compat/Android.bp b/compat/Android.bp
+index be895d9..1a8935b 100644
+--- a/compat/Android.bp
++++ b/compat/Android.bp
+@@ -592,6 +592,12 @@ se_compat_cil {
+     version: "202404",
+ }
+ 
++prebuilt_etc {
++    name: "plat_sepolicy_genfs_202404.cil",
++    src: "plat_sepolicy_genfs_202404.cil",
++    relative_install_path: "selinux",
++}
++
+ prebuilt_etc {
+     name: "plat_sepolicy_genfs_202504.cil",
+     src: "plat_sepolicy_genfs_202504.cil",
+diff --git a/private/domain.te b/private/domain.te
+index bdc185c..2c9b29d 100644
+--- a/private/domain.te
++++ b/private/domain.te
+@@ -2161,7 +2161,7 @@ full_treble_only(`
+     -crash_dump
+     -crosvm # loads vendor-specific disk images
+     -virtualizationmanager # loads vendor-specific disk images
+-    -early_virtmgr # loads vendor-specific disk images
++    is_flag_enabled(RELEASE_AVF_ENABLE_EARLY_VM, `-early_virtmgr') # loads vendor-specific disk images
+     -init # starts vendor executables
+     -kernel # loads /vendor/firmware
+     -heapprofd
+diff --git a/private/hal_keymint_system.te b/private/hal_keymint_system.te
+index d70ba53..0cbb323 100644
+--- a/private/hal_keymint_system.te
++++ b/private/hal_keymint_system.te
+@@ -9,5 +9,7 @@ allow hal_keymint_system accessor_trusty_keymint_comm_service:service_manager {
+ allow hal_keymint_system trusty_keymint_comm_service:service_manager { find };
+ 
+ # allow hal_keymint_system to use file descriptors from early_virtmgr
+-allow hal_keymint_system early_virtmgr:fd { use };
+-allow hal_keymint_system early_virtmgr:vsock_socket { getattr getopt read write };
++is_flag_enabled(RELEASE_AVF_ENABLE_EARLY_VM, `
++    allow hal_keymint_system early_virtmgr:fd { use };
++    allow hal_keymint_system early_virtmgr:vsock_socket { getattr getopt read write };
++')
+diff --git a/private/hal_widevine_system.te b/private/hal_widevine_system.te
+index 0176ab4..9e0fddc 100644
+--- a/private/hal_widevine_system.te
++++ b/private/hal_widevine_system.te
+@@ -15,5 +15,7 @@ allow hal_widevine_system accessor_trusty_widevine_comm_service:service_manager
+ allow hal_widevine_system trusty_widevine_comm_service:service_manager { find };
+ 
+ # allow hal_widevine_system to use file descriptors from early_virtmgr
+-allow hal_widevine_system early_virtmgr:fd { use };
+-allow hal_widevine_system early_virtmgr:vsock_socket { getattr getopt read write };
++is_flag_enabled(RELEASE_AVF_ENABLE_EARLY_VM, `
++    allow hal_widevine_system early_virtmgr:fd { use };
++    allow hal_widevine_system early_virtmgr:vsock_socket { getattr getopt read write };
++')

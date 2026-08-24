@@ -1,0 +1,187 @@
+diff --git a/src/com/android/settings/accessibility/detail/a11yactivity/SettingsPreferenceController.kt b/src/com/android/settings/accessibility/detail/a11yactivity/SettingsPreferenceController.kt
+index dd11057..39abb30 100644
+--- a/src/com/android/settings/accessibility/detail/a11yactivity/SettingsPreferenceController.kt
++++ b/src/com/android/settings/accessibility/detail/a11yactivity/SettingsPreferenceController.kt
+@@ -38,7 +38,7 @@ class SettingsPreferenceController(context: Context, prefKey: String) :
+             } == true
+ 
+         if (canResolveIntent) {
+-            setIntent(settingsIntent)
++            setIntent(settingsIntent!!)
+         }
+     }
+ 
+diff --git a/src/com/android/settings/accessibility/detail/a11yservice/SettingsPreferenceController.kt b/src/com/android/settings/accessibility/detail/a11yservice/SettingsPreferenceController.kt
+index d19237f..5a03962 100644
+--- a/src/com/android/settings/accessibility/detail/a11yservice/SettingsPreferenceController.kt
++++ b/src/com/android/settings/accessibility/detail/a11yservice/SettingsPreferenceController.kt
+@@ -42,7 +42,7 @@ class SettingsPreferenceController(context: Context, prefKey: String) :
+             } == true
+ 
+         if (canResolveIntent) {
+-            setIntent(settingsIntent)
++            setIntent(settingsIntent!!)
+         }
+     }
+ 
+diff --git a/src/com/android/settings/accessibility/screenmagnification/MagnifyKeyboardPreferenceController.kt b/src/com/android/settings/accessibility/screenmagnification/MagnifyKeyboardPreferenceController.kt
+index 76c1627..4200b39 100644
+--- a/src/com/android/settings/accessibility/screenmagnification/MagnifyKeyboardPreferenceController.kt
++++ b/src/com/android/settings/accessibility/screenmagnification/MagnifyKeyboardPreferenceController.kt
+@@ -106,18 +106,18 @@ class MagnifyKeyboardPreferenceController(context: Context, prefKey: String) :
+         if (preference?.key == preferenceKey) {
+             @MagnificationCapabilities.MagnificationMode
+             val mode = MagnificationCapabilities.getCapabilities(mContext)
+-            preference.isEnabled =
++            preference?.isEnabled =
+                 mode == MagnificationCapabilities.MagnificationMode.FULLSCREEN ||
+                     mode == MagnificationCapabilities.MagnificationMode.ALL
+ 
+             @StringRes
+             val resId =
+-                if (preference.isEnabled) {
++                if (preference?.isEnabled == true) {
+                     R.string.accessibility_screen_magnification_nav_ime_summary
+                 } else {
+                     R.string.accessibility_screen_magnification_nav_ime_unavailable_summary
+                 }
+-            preference.setSummary(mContext.getString(resId))
++            preference?.setSummary(mContext.getString(resId))
+         }
+     }
+ }
+diff --git a/src/com/android/settings/accessibility/screenmagnification/OneFingerPanningPreferenceController.kt b/src/com/android/settings/accessibility/screenmagnification/OneFingerPanningPreferenceController.kt
+index 6575c88..679d03a 100644
+--- a/src/com/android/settings/accessibility/screenmagnification/OneFingerPanningPreferenceController.kt
++++ b/src/com/android/settings/accessibility/screenmagnification/OneFingerPanningPreferenceController.kt
+@@ -80,7 +80,7 @@ class OneFingerPanningPreferenceController(context: Context, prefKey: String) :
+         super.updateState(preference)
+         if (preference?.key == preferenceKey) {
+             @MagnificationMode val mode = MagnificationCapabilities.getCapabilities(mContext)
+-            preference.isEnabled = mode == FULLSCREEN || mode == ALL
++            preference?.isEnabled = mode == FULLSCREEN || mode == ALL
+             refreshSummary(preference)
+         }
+     }
+diff --git a/src/com/android/settings/appfunctions/providers/CatalystStateMetadataProviderExecutor.kt b/src/com/android/settings/appfunctions/providers/CatalystStateMetadataProviderExecutor.kt
+index 3306b3e..8bd8742 100644
+--- a/src/com/android/settings/appfunctions/providers/CatalystStateMetadataProviderExecutor.kt
++++ b/src/com/android/settings/appfunctions/providers/CatalystStateMetadataProviderExecutor.kt
+@@ -143,7 +143,7 @@ class CatalystStateMetadataProviderExecutor(
+                     writable = metadataProto.readWritePermit == ReadWritePermit.ALLOW,
+                     // TODO: properly expose possible values
+                     possibleValues = metadataProto.valueDescriptor.toString(),
+-                    hintText = config?.hintText(englishContext, metadata),
++                    hintText = config?.hintText?.invoke(englishContext, metadata),
+                 )
+             )
+         }
+diff --git a/src/com/android/settings/appfunctions/providers/CatalystStateProviderExecutor.kt b/src/com/android/settings/appfunctions/providers/CatalystStateProviderExecutor.kt
+index 8122b75..251ab1a 100644
+--- a/src/com/android/settings/appfunctions/providers/CatalystStateProviderExecutor.kt
++++ b/src/com/android/settings/appfunctions/providers/CatalystStateProviderExecutor.kt
+@@ -155,7 +155,7 @@ class CatalystStateProviderExecutor(
+                                 localized = metadata.getPreferenceTitle(context).toString(),
+                             ),
+                         jsonValue = it,
+-                        hintText = config?.hintText(englishContext, metadata),
++                        hintText = config?.hintText?.invoke(englishContext, metadata),
+                     )
+                 )
+             }
+diff --git a/src/com/android/settings/connecteddevice/display/SelectedDisplayPreferenceFragment.kt b/src/com/android/settings/connecteddevice/display/SelectedDisplayPreferenceFragment.kt
+index 6f18bb9..19a766e 100644
+--- a/src/com/android/settings/connecteddevice/display/SelectedDisplayPreferenceFragment.kt
++++ b/src/com/android/settings/connecteddevice/display/SelectedDisplayPreferenceFragment.kt
+@@ -428,7 +428,7 @@ open class SelectedDisplayPreferenceFragment(
+                         writePreferenceClickMetric(preference)
+                         val displayId = viewModel.uiState.value?.selectedDisplayId ?: return false
+                         val uniqueDisplayId =
+-                            viewModel.uiState.value?.enabledDisplays[displayId]?.uniqueId
++                            viewModel.uiState.value?.enabledDisplays?.get(displayId)?.uniqueId
+                                 ?: return false
+                         val connectionPreference = Integer.parseInt(newValue as String)
+                         viewModel.injector.updateDisplayConnectionPreference(
+diff --git a/src/com/android/settings/fuelgauge/batteryusage/PeriodicJobManager.java b/src/com/android/settings/fuelgauge/batteryusage/PeriodicJobManager.java
+index c2dcb99..718e109 100644
+--- a/src/com/android/settings/fuelgauge/batteryusage/PeriodicJobManager.java
++++ b/src/com/android/settings/fuelgauge/batteryusage/PeriodicJobManager.java
+@@ -20,6 +20,7 @@ import android.app.AlarmManager;
+ import android.app.PendingIntent;
+ import android.content.Context;
+ import android.content.Intent;
++import android.os.SystemProperties;
+ import android.util.Log;
+ 
+ import androidx.annotation.VisibleForTesting;
+@@ -42,6 +43,20 @@ public final class PeriodicJobManager {
+ 
+     @VisibleForTesting static long sBroadcastDelayFromBoot = Duration.ofMinutes(40).toMillis();
+ 
++    /**
++     * NX809J: stride, in hours, between battery-usage refreshes. 1 = stock (default).
++     *
++     * <p>AOSP schedules this job with {@code setExactAndAllowWhileIdle(RTC_WAKEUP)} on every sharp
++     * hour. "AllowWhileIdle" means Doze is not permitted to defer it, so it is the most frequent
++     * thing that can wake an idle, offline phone — and no {@code device_idle_constants} tuning can
++     * touch it, which is why stretching the Doze windows appears to do nothing. Left alone it is
++     * ~9 guaranteed wakeups across a night on the desk, purely to refresh a battery chart.
++     *
++     * <p>Values: {@code 1} = stock hourly, {@code N} = every N hours, {@code 0} = never schedule.
++     * At 0 the battery-usage history simply stops accumulating; nothing else in Settings breaks.
++     */
++    private static final String PROP_JOB_STRIDE_HOURS = "persist.sys.rm.batteryjob_hours";
++
+     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+     void reset() {
+         sSingleton = null; // for testing only
+@@ -73,9 +88,25 @@ public final class PeriodicJobManager {
+         // Cancels the previous alert job and schedules the next one.
+         final PendingIntent pendingIntent = getPendingIntent();
+         cancelJob(pendingIntent);
++
++        final int strideHours = SystemProperties.getInt(PROP_JOB_STRIDE_HOURS, 1);
++        if (strideHours <= 0) {
++            // Deliberately do not reschedule. The alarm above is already cancelled, so the chain
++            // stops here until the next boot or until the user opens the battery-usage screen.
++            BatteryUsageLogUtils.writeLog(
++                    mContext, Action.SCHEDULE_JOB, "job disabled by " + PROP_JOB_STRIDE_HOURS);
++            Log.d(TAG, "periodic job disabled by " + PROP_JOB_STRIDE_HOURS);
++            return;
++        }
++
+         // Uses the timestamp of next full hour in local timezone.
+         long currentTimeMillis = System.currentTimeMillis();
+-        final long triggerAtMillis = getTriggerAtMillis(currentTimeMillis, fromBoot);
++        long triggerAtMillis = getTriggerAtMillis(currentTimeMillis, fromBoot);
++        // Step whole sharp hours rather than adding milliseconds, so the trigger stays hour-aligned
++        // across a DST transition.
++        for (int i = 1; i < strideHours; i++) {
++            triggerAtMillis = TimestampUtils.getNextHourTimestamp(triggerAtMillis);
++        }
+         mAlarmManager.setExactAndAllowWhileIdle(
+                 AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+ 
+diff --git a/src/com/android/settings/supervision/ipc/SupervisionMessengerClient.kt b/src/com/android/settings/supervision/ipc/SupervisionMessengerClient.kt
+index 3bcf97c..a8c6755 100644
+--- a/src/com/android/settings/supervision/ipc/SupervisionMessengerClient.kt
++++ b/src/com/android/settings/supervision/ipc/SupervisionMessengerClient.kt
+@@ -110,8 +110,8 @@ class SupervisionMessengerClient(context: Context) :
+      * @return A map where the keys are the requested keys, and the values are the corresponding
+      *   list of supported apps.
+      */
+-    override suspend fun getSupportedApps(keys: List<String>): Map<String, List<SupportedApp>> =
+-        try {
++    override suspend fun getSupportedApps(keys: List<String>): Map<String, List<SupportedApp>> {
++        return try {
+             val targetPackageName = packageName ?: return mapOf()
+ 
+             invoke(targetPackageName, SupportedAppsApi(), SupportedAppsRequest(keys = keys)).await()
+@@ -119,6 +119,7 @@ class SupervisionMessengerClient(context: Context) :
+             Log.e(SupervisionLog.TAG, "Error fetching supported apps from supervision app", e)
+             mapOf()
+         }
++    }
+ 
+     /**
+      * Generates a deterministic cache key from a list of preference keys. The keys are sorted to

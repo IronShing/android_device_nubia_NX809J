@@ -1,0 +1,57 @@
+diff --git a/photopicker/Android.bp b/photopicker/Android.bp
+index 27fa97f..828242f 100644
+--- a/photopicker/Android.bp
++++ b/photopicker/Android.bp
+@@ -25,9 +25,7 @@ android_library {
+         "-Aroom.schemaLocation=packages/providers/MediaProvider/photopicker/schemas",
+     ],
+     kotlincflags: [
+-        "-Werror",
+         "-Xjvm-default=all",
+-        "-Xannotation-default-target=param-property",
+     ],
+     static_libs: [
+         "androidx.activity_activity-compose",
+diff --git a/photopicker/src/com/android/photopicker/core/components/mediagrid/MediaGrid.kt b/photopicker/src/com/android/photopicker/core/components/mediagrid/MediaGrid.kt
+index 13d354d..b4690d9 100644
+--- a/photopicker/src/com/android/photopicker/core/components/mediagrid/MediaGrid.kt
++++ b/photopicker/src/com/android/photopicker/core/components/mediagrid/MediaGrid.kt
+@@ -428,7 +428,7 @@ fun mediaGrid(
+             onLongPress: ((item: MediaGridItem) -> Unit)?,
+             dateFormat: DateFormat,
+         ) -> Unit =
+-        { item, isSelected, onClick, onLongPress, dateFormat ->
++        { item, isSelected, onClick, _, dateFormat ->
+             defaultContentItemFactory(
+                 item = item,
+                 isSelected = isSelected,
+@@ -521,7 +521,7 @@ fun mediaGrid(
+ @Composable
+ private fun mediaGrid(
+     items: LazyPagingItems<MediaGridItem>,
+-    focusItem: MediaGridItem? = null,
++    @Suppress("UNUSED_PARAMETER") focusItem: MediaGridItem? = null,
+     selection: Set<Media>,
+     dragSelectionEnabled: Boolean = false,
+     dragSelectState: GridDragSelectState? = null,
+@@ -663,7 +663,6 @@ private fun mediaGrid(
+                             // This can be safely suppressed as the condition includes the SdkLevel
+                             // check, but the Linter doesn't understand the precondition to this
+                             // block being run.
+-                            @SuppressLint("NewApi")
+                             transferScrollableTouchesToHostInEmbedded(
+                                 state,
+                                 isExpanded,
+diff --git a/photopicker/src/com/android/photopicker/extensions/Modifier.kt b/photopicker/src/com/android/photopicker/extensions/Modifier.kt
+index 15950fa..1da3a56 100644
+--- a/photopicker/src/com/android/photopicker/extensions/Modifier.kt
++++ b/photopicker/src/com/android/photopicker/extensions/Modifier.kt
+@@ -255,7 +255,7 @@ private fun Modifier.transferTouchesToSurfaceControlViewHost(
+                     if (canceled) break
+ 
+                     val postSlopOffset =
+-                        touchSlopDetector.addPointerInputChange(dragEvent, touchSlop)
++                        touchSlopDetector.addPointerInputChange(dragEvent!!, touchSlop)
+ 
+                     // Once pastTouchSlop check to see if the touch meets the conditions to be
+                     // transferred to the host.

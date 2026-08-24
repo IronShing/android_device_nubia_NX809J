@@ -1,0 +1,30 @@
+diff --git a/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt b/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt
+index b529e14..1311a8e 100644
+--- a/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt
++++ b/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt
+@@ -176,7 +176,24 @@ class IntentsViewModel(application: Application) : GlimpseViewModel(application)
+                 null,
+                 Intent.ACTION_MAIN -> ParsedIntent.MainIntent()
+ 
+-                Intent.ACTION_VIEW -> ParsedIntent.ViewIntent(mediaItems.filterIsInstance<Media>())
++                Intent.ACTION_VIEW -> {
++                    val medias = mediaItems.filterIsInstance<Media>()
++                    val single = medias.singleOrNull()
++                    // For a single MediaStore item (e.g. tapping the camera thumbnail),
++                    // open the whole timeline so the user can swipe through every shot
++                    // chronologically — photos and videos, across all folders. Using the
++                    // item's own bucket would strand them in one folder, and this camera
++                    // saves selfies/videos into separate subfolders (separate buckets).
++                    // Non-MediaStore fallback items have albumUri == uri and stay single.
++                    if (single != null && single.albumUri != single.uri) {
++                        ParsedIntent.ReviewIntent(
++                            AlbumViewModel.AlbumRequest(albumType = AlbumType.REELS),
++                            single,
++                        )
++                    } else {
++                        ParsedIntent.ViewIntent(medias)
++                    }
++                }
+ 
+                 MediaStore.ACTION_REVIEW -> ParsedIntent.ReviewIntent(
+                     AlbumViewModel.AlbumRequest(

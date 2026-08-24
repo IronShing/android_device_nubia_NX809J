@@ -1,0 +1,29 @@
+diff --git a/src/com/android/privatespace/PrivateSpaceViewModel.kt b/src/com/android/privatespace/PrivateSpaceViewModel.kt
+index b78a230..24acfc8 100644
+--- a/src/com/android/privatespace/PrivateSpaceViewModel.kt
++++ b/src/com/android/privatespace/PrivateSpaceViewModel.kt
+@@ -59,7 +59,7 @@ open class PrivateSpaceViewModel(
+         internal const val FILE_LIMIT_CHECK_TIMEOUT_MS = 3_000L // 3 seconds
+     }
+ 
+-    open var uiState by mutableStateOf(PrivateSpaceUiState.STARTED)
++    var uiState by mutableStateOf(PrivateSpaceUiState.STARTED)
+         private set
+ 
+     var isPreviousTransferCopy: Boolean = true
+diff --git a/src/com/android/privatespace/filetransfer/FileTransferStateRepository.kt b/src/com/android/privatespace/filetransfer/FileTransferStateRepository.kt
+index e2b5210..5ca16ef 100644
+--- a/src/com/android/privatespace/filetransfer/FileTransferStateRepository.kt
++++ b/src/com/android/privatespace/filetransfer/FileTransferStateRepository.kt
+@@ -34,9 +34,9 @@ interface IFileTransferStateRepository {
+ 
+ /** Manages the writes and reads of the state of file transfer */
+ object FileTransferStateRepository : IFileTransferStateRepository {
+-    private val Context.dataStore by preferencesDataStore(name = FILE_TRANSFER_PREFS_KEY)
+-
+     private const val FILE_TRANSFER_PREFS_KEY = "file_transfer_prefs"
++
++    private val Context.dataStore by preferencesDataStore(name = FILE_TRANSFER_PREFS_KEY)
+     private val KEEP_ORIGINAL_KEY = booleanPreferencesKey("keep_original")
+     private val TRANSFER_IN_PROGRESS_KEY = booleanPreferencesKey("transfer_in_progress")
+ 

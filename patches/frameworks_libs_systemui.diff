@@ -1,0 +1,13 @@
+diff --git a/displaylib/src/com/android/app/displaylib/fakes/FakePerDisplayRepository.kt b/displaylib/src/com/android/app/displaylib/fakes/FakePerDisplayRepository.kt
+index c832462..76750c5 100644
+--- a/displaylib/src/com/android/app/displaylib/fakes/FakePerDisplayRepository.kt
++++ b/displaylib/src/com/android/app/displaylib/fakes/FakePerDisplayRepository.kt
+@@ -35,7 +35,7 @@ class FakePerDisplayRepository<T>(private val defaultIfAbsent: ((Int) -> T)? = n
+ 
+     override fun get(displayId: Int): T? {
+         return if (defaultIfAbsent != null) {
+-            instances.getOrPut(displayId) { defaultIfAbsent(displayId) }
++            instances.getOrPut(displayId) { defaultIfAbsent.invoke(displayId) }
+         } else {
+             instances[displayId]
+         }

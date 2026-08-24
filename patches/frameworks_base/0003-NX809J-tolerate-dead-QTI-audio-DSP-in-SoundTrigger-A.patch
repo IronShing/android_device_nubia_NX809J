@@ -1,0 +1,127 @@
+From eebaa69dc0209b2e9d73534e32be598249362b9b Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Thu, 16 Jul 2026 02:43:49 +0300
+Subject: [PATCH 3/3] NX809J: tolerate dead QTI audio DSP in SoundTrigger +
+ AudioService
+
+DefaultHalFactory.create bounded wait+throw (skip SoundTrigger module when
+soundtrigger3 HAL absent); ExternalCaptureStateTracker assert->ALOGE_IF.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XSVqjLdTXp7prKh1VGn7kD
+Change-Id: Ie16fc4c9e35e7e315c08dc3c33a6810870263f3d
+---
+ .../server/power/hint/HintManagerService.java | 30 +++++++++++++------
+ ...middleware_ExternalCaptureStateTracker.cpp |  8 ++++-
+ .../DefaultHalFactory.java                    | 28 ++++++++++++++++-
+ 3 files changed, 55 insertions(+), 11 deletions(-)
+
+diff --git a/services/core/java/com/android/server/power/hint/HintManagerService.java b/services/core/java/com/android/server/power/hint/HintManagerService.java
+index 9174855b6..aaf8d58c3 100644
+--- a/services/core/java/com/android/server/power/hint/HintManagerService.java
++++ b/services/core/java/com/android/server/power/hint/HintManagerService.java
+@@ -327,12 +327,15 @@ public final class HintManagerService extends SystemService {
+         mPowerHalVersion = 0;
+         mVendorApiLevel = Integer.parseInt(SystemProperties.get(PROPERTY_VENDOR_API_LEVEL, ""));
+         mUsesFmq = false;
+-        if (mPowerHal != null) {
+-            try {
+-                mSupportInfo = getSupportInfo();
+-            } catch (RemoteException e) {
+-                throw new IllegalStateException("Could not contact PowerHAL!", e);
+-            }
++        // NX809J: always resolve SupportInfo (getSupportInfo() is null-safe and returns a
++        // complete default when the vendor power HAL is absent/older/incomplete). The stock
++        // ZTE power HAL doesn't register IPower with a usable getSupportInfo(), so the old
++        // `if (mPowerHal != null)` guard left mSupportInfo null -> NPE below -> system_server
++        // crash-loop -> boot hang.
++        try {
++            mSupportInfo = getSupportInfo();
++        } catch (RemoteException e) {
++            throw new IllegalStateException("Could not contact PowerHAL!", e);
+         }
+         if (mSupportInfo.headroom.isCpuSupported) {
+             mCpuHeadroomCache = new HeadroomCache<>(2, mSupportInfo.headroom.cpuMinIntervalMillis);
+@@ -366,9 +369,18 @@ public final class HintManagerService extends SystemService {
+ 
+     SupportInfo getSupportInfo() throws RemoteException {
+         try {
+-            mPowerHalVersion = mPowerHal.getInterfaceVersion();
+-            if (mPowerHalVersion >= 6) {
+-                return mPowerHal.getSupportInfo();
++            if (mPowerHal != null) {
++                mPowerHalVersion = mPowerHal.getInterfaceVersion();
++                if (mPowerHalVersion >= 6) {
++                    SupportInfo halInfo = mPowerHal.getSupportInfo();
++                    // NX809J: the stock vendor power HAL can report v>=6 yet return a
++                    // null / headroom-less SupportInfo -> HintManagerService NPE at init
++                    // -> system_server crash-loop. Fall through to the safe default below
++                    // instead of propagating the incomplete object.
++                    if (halInfo != null && halInfo.headroom != null) {
++                        return halInfo;
++                    }
++                }
+             }
+         } catch (RemoteException e) {
+             throw new IllegalStateException("Could not contact PowerHAL!", e);
+diff --git a/services/core/jni/com_android_server_soundtrigger_middleware_ExternalCaptureStateTracker.cpp b/services/core/jni/com_android_server_soundtrigger_middleware_ExternalCaptureStateTracker.cpp
+index ae6cb187f..e94b1d0a8 100644
+--- a/services/core/jni/com_android_server_soundtrigger_middleware_ExternalCaptureStateTracker.cpp
++++ b/services/core/jni/com_android_server_soundtrigger_middleware_ExternalCaptureStateTracker.cpp
+@@ -72,7 +72,13 @@ void connect(JNIEnv* env, jobject obj) {
+     sp<AudioSystem::CaptureStateListener> listener(new Listener(env, obj));
+     status_t status =
+         AudioSystem::registerSoundTriggerCaptureStateListener(listener);
+-    LOG_ALWAYS_FATAL_IF(status != NO_ERROR);
++    // NX809J: the vendor audio DSP (ADSP APM/AGM) never comes up on this source-vendor,
++    // so AudioPolicyService is dead and this registration fails. Aborting here kills
++    // system_server -> boot loop. Degrade instead of crashing (no SoundTrigger capture
++    // tracking; the Java run() loop then just blocks on its semaphore). Boot proceeds.
++    ALOGE_IF(status != NO_ERROR,
++             "NX809J: registerSoundTriggerCaptureStateListener failed (%d); continuing "
++             "without SoundTrigger capture-state tracking (audio DSP unavailable)", status);
+ }
+ 
+ const JNINativeMethod gMethods[] = {
+diff --git a/services/voiceinteraction/java/com/android/server/soundtrigger_middleware/DefaultHalFactory.java b/services/voiceinteraction/java/com/android/server/soundtrigger_middleware/DefaultHalFactory.java
+index 55cbf2955..3c20f6dba 100644
+--- a/services/voiceinteraction/java/com/android/server/soundtrigger_middleware/DefaultHalFactory.java
++++ b/services/voiceinteraction/java/com/android/server/soundtrigger_middleware/DefaultHalFactory.java
+@@ -63,7 +63,33 @@ class DefaultHalFactory implements HalFactory {
+                                 + "/default";
+                 if (ServiceManager.isDeclared(aidlServiceName)) {
+                     Slog.i(TAG, "Connecting to default soundtrigger3.ISoundTriggerHw");
+-                    return new SoundTriggerHw3Compat(ServiceManager.waitForService(aidlServiceName),
++                    // NX809J: on this source-vendor build the QTI ST HAL
++                    // (libsoundtriggerhal.qti.so, registered by the stock audiohalservice.qti)
++                    // is never loaded -- the AOSP default audio-core HAL is used instead -- so
++                    // soundtrigger3 is declared in VINTF but implemented by nobody. The stock
++                    // waitForService() then blocks system_server's main thread forever ->
++                    // Watchdog kills system_server -> boot loop. Bound the wait; if the HAL never
++                    // registers, throw so SoundTriggerMiddlewareImpl skips this module
++                    // (SoundTrigger/hotword unavailable) and boot proceeds. Reverts to real
++                    // behaviour automatically once the QTI audio HAL registers sthal.
++                    android.os.IBinder binder = null;
++                    for (int i = 0; i < 50; i++) {   // ~5s bounded wait
++                        binder = ServiceManager.checkService(aidlServiceName);
++                        if (binder != null) {
++                            break;
++                        }
++                        try {
++                            Thread.sleep(100);
++                        } catch (InterruptedException ie) {
++                            Thread.currentThread().interrupt();
++                            break;
++                        }
++                    }
++                    if (binder == null) {
++                        throw new RuntimeException("NX809J: soundtrigger3.ISoundTriggerHw/default "
++                                + "declared but not registered; skipping SoundTrigger module");
++                    }
++                    return new SoundTriggerHw3Compat(binder,
+                             () -> {
+                                 // This property needs to be defined in an init.rc script and
+                                 // trigger a HAL reboot.
+-- 
+2.55.0
+

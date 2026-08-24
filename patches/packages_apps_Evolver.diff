@@ -1,0 +1,30 @@
+diff --git a/res/values/evolution_strings.xml b/res/values/evolution_strings.xml
+index 0f8c59f..e85d98c 100644
+--- a/res/values/evolution_strings.xml
++++ b/res/values/evolution_strings.xml
+@@ -1000,6 +1000,8 @@
+     <string name="miscellaneous_ignore_window_secure_summary">Remove screenshot and screen recording restrictions for all apps. May expose private content</string>
+     <string name="miscellaneous_desktop_experience_title">Desktop Experience</string>
+     <string name="miscellaneous_desktop_experience_summary">Enable the full desktop windowing experience (dock and freeform windows) without turning on Developer options. Reboot to apply</string>
++    <string name="show_app_handle_title">Show app handle</string>
++    <string name="show_app_handle_summary">Show the desktop-windowing app handle (the pill at the top of fullscreen apps) and enable on-screen freeform. Off hides it. Reboot to apply</string>
+     <string name="miscellaneous_unlimit_screenrecord_title">Unlimited screen record</string>
+     <string name="miscellaneous_unlimit_screenrecord_summary">Remove the 15 GiB file size limit. May result in a larger output file than needed</string>
+     <string name="disable_flash_sms_title">Disable flash SMS</string>
+diff --git a/res/xml/evolution_settings_miscellaneous.xml b/res/xml/evolution_settings_miscellaneous.xml
+index fc42708..5af9135 100644
+--- a/res/xml/evolution_settings_miscellaneous.xml
++++ b/res/xml/evolution_settings_miscellaneous.xml
+@@ -152,6 +152,12 @@
+             android:summary="@string/miscellaneous_desktop_experience_summary"
+             android:defaultValue="false" />
+ 
++        <org.evolution.settings.preferences.OverlaySwitchPreference
++            android:key="com.nx809j.overlay.showapphandle"
++            android:title="@string/show_app_handle_title"
++            android:summary="@string/show_app_handle_summary"
++            android:defaultValue="false" />
++
+     </PreferenceCategory>
+ 
+ </PreferenceScreen>

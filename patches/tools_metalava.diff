@@ -1,0 +1,26 @@
+diff --git a/metalava-model/src/main/java/com/android/tools/metalava/model/SourceFile.kt b/metalava-model/src/main/java/com/android/tools/metalava/model/SourceFile.kt
+index 016b3e9..b3dfcd1 100644
+--- a/metalava-model/src/main/java/com/android/tools/metalava/model/SourceFile.kt
++++ b/metalava-model/src/main/java/com/android/tools/metalava/model/SourceFile.kt
+@@ -122,7 +122,7 @@ interface SourceFile {
+ }
+ 
+ /** Encapsulates information about the imports used in a [SourceFile]. */
+-@ConsistentCopyVisibility
++// @ConsistentCopyVisibility
+ data class Import
+ internal constructor(
+     /**
+diff --git a/metalava/src/main/java/com/android/tools/metalava/apilevels/ApiVersion.kt b/metalava/src/main/java/com/android/tools/metalava/apilevels/ApiVersion.kt
+index 96bf76b..dc1204b 100644
+--- a/metalava/src/main/java/com/android/tools/metalava/apilevels/ApiVersion.kt
++++ b/metalava/src/main/java/com/android/tools/metalava/apilevels/ApiVersion.kt
+@@ -20,7 +20,7 @@ import com.android.tools.metalava.apilevels.ApiVersion.Companion.toString
+ import java.util.regex.Pattern
+ 
+ /** Version of an SDK, e.g. Android or AndroidX. */
+-@ConsistentCopyVisibility
++// @ConsistentCopyVisibility
+ data class ApiVersion
+ internal constructor(
+     /** The major version. */

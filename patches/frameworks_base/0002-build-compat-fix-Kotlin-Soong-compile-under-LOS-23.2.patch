@@ -1,7 +1,7 @@
-From 811188ea5744e831bb36da281e8b0526af31555f Mon Sep 17 00:00:00 2001
+From d5086edd27639e595e817c85759e2bb38a53c4ad Mon Sep 17 00:00:00 2001
 From: John <john@primaryautotrd.com>
 Date: Sun, 21 Jun 2026 15:02:49 +0300
-Subject: [PATCH 2/2] build-compat: fix Kotlin/Soong compile under LOS-23.2 /
+Subject: [PATCH 2/3] build-compat: fix Kotlin/Soong compile under LOS-23.2 /
  Android-16
 
 Targeted, no-functional-change fixes so the tree compiles: hoist a const out of a
@@ -147,5 +147,5 @@ index 6b5518954..d2a7a27f7 100644
          val newFlags = (oldFlags andInv flagMask) or (flags and flagMask)
          if (oldFlags == newFlags) {
 -- 
-2.54.0
+2.55.0
 

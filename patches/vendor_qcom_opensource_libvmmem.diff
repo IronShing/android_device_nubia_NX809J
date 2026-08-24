@@ -1,0 +1,40 @@
+diff --git a/Android.bp b/Android.bp
+index 1721dd0..3d93600 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -1,34 +1 @@
+-cc_library_headers {
+-    name: "libvmmem_headers",
+-    vendor: true,
+-    export_include_dirs: [
+-        "include",
+-    ],
+-}
+-cc_library {
+-    srcs: [
+-        "vmmem.cpp",
+-        "vmmem_wrapper.cpp",
+-    ],
+-    name: "libvmmem",
+-    owner: "qti",
+-    proprietary: true,
+-    cflags: [
+-        "-Wall",
+-        "-Werror",
+-        "-Wextra",
+-    ],
+-    export_header_lib_headers: [
+-        "libvmmem_headers",
+-    ],
+-    header_libs: [
+-        "qti_kernel_headers",
+-        "device_kernel_headers",
+-        "libvmmem_headers",
+-    ],
+-    shared_libs: [
+-        "liblog",
+-        "libbase",
+-    ],
+-}
+-
++// disabled: dup of sm8750 libvmmem_headers

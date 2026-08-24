@@ -1,0 +1,16 @@
+diff --git a/build/envsetup.sh b/build/envsetup.sh
+index 47bb6534..865bc7a8 100644
+--- a/build/envsetup.sh
++++ b/build/envsetup.sh
+@@ -14,6 +14,11 @@ function check_product()
+     fi
+     if (echo -n $1 | grep -q -e "^lineage_") ; then
+         LINEAGE_BUILD=$(echo -n $1 | sed -e 's/^lineage_//g')
++    elif (echo -n $1 | grep -q -e "^evolution_") ; then
++        # Evolution X rides LineageOS device trees; keep LINEAGE_BUILD set to the
++        # device codename so build/make/core/config.mk still pulls in
++        # device/lineage/sepolicy/common (hal_lineage_health/livedisplay/... attrs).
++        LINEAGE_BUILD=$(echo -n $1 | sed -e 's/^evolution_//g')
+     else
+         LINEAGE_BUILD=
+     fi

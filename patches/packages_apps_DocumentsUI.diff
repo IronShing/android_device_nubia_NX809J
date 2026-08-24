@@ -1,0 +1,31 @@
+diff --git a/src/com/android/documentsui/util/ComponentUtils.kt b/src/com/android/documentsui/util/ComponentUtils.kt
+index f57e1f2..7d40110 100644
+--- a/src/com/android/documentsui/util/ComponentUtils.kt
++++ b/src/com/android/documentsui/util/ComponentUtils.kt
+@@ -93,20 +93,19 @@ private fun isComponentEnabled(
+         PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> {
+             // DEFAULT is a state that essentially defers to the state defined in the
+             // AndroidManifest which can be either enabled or disabled.
+-            packageManager.getPackageInfo(
++            val packageInfo = packageManager.getPackageInfo(
+                 componentName.packageName,
+                 PackageManager.GET_ACTIVITIES
+-            )?.let { packageInfo: PackageInfo ->
+-                if (packageInfo.activities == null) {
+-                    return false
+-                }
+-                for (val info in packageInfo.activities) {
++            )
++            val activities = packageInfo?.activities
++            if (activities != null) {
++                for (info in activities) {
+                     if (info.name == componentName.className) {
+                         return info.enabled
+                     }
+                 }
+             }
+-            return false
++            false
+         }
+ 
+         // Everything else is considered disabled.
