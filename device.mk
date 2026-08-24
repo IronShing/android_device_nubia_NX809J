@@ -597,6 +597,13 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PACKAGES += \
     RedMagicControl
 
+# RedMagicControl is privileged (/system_ext/priv-app), so its signature|privileged permissions must
+# be allowlisted as well as signature-granted. Without this, PackageManagerService.systemReady()
+# throws under ro.control_privapp_permissions=enforce and the device never finishes booting -- this
+# is what broke the LineageOS builds. See permissions/privapp-permissions-com.nubia.rmcontrol.xml.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/permissions/privapp-permissions-com.nubia.rmcontrol.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.nubia.rmcontrol.xml
+
 # Fan (5) + liquid-cooling (3) level triggers -> /odm/etc/init (vendor_init writes
 # the vendor fan/micropump nodes; tiles set persist.sys.{fan,cooling}.level).
 # Same enforcing split as dt2w_uewake_arm.rc.

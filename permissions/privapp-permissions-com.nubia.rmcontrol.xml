@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    RedMagic Control is a PRIVILEGED app (/system_ext/priv-app). Holding the platform signature is
+    not sufficient for signature|privileged permissions: PackageManagerService also requires the app
+    to appear in a privapp-permissions allowlist, and with
+    ro.control_privapp_permissions=enforce a missing entry is FATAL.
+    AppIdPermissionPolicy.onSystemReady throws IllegalStateException, system_server dies, init
+    SIGKILLs zygote, and after four strikes sys.init.updatable_crashing=1 puts the device in a
+    framework restart loop that never reaches the launcher.
+
+    That is exactly what broke the LineageOS builds (stuck at boot animation). EvolutionX only
+    escaped it because its product build.prop sets ro.control_privapp_permissions=log, which
+    downgrades the same violation to a log line, and silently DENIES these three permissions,
+    which is why the desktop/overlay integration could not pre-grant anything there.
+
+    MANAGE_APP_OPS_MODES is deliberately absent: it is plain signature (not signature|privileged),
+    so the platform certificate alone grants it and it must not be listed here.
+-->
+<permissions>
+    <privapp-permissions package="com.nubia.rmcontrol">
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+        <permission name="android.permission.CHANGE_OVERLAY_PACKAGES"/>
+    </privapp-permissions>
+</permissions>
