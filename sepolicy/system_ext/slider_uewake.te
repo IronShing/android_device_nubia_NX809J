@@ -18,3 +18,8 @@ allow slider_uewake input_device:chr_file r_file_perms;
 # Publish slider state. rm_ctrl_prop is the existing system_internal_prop used by the
 # RedMagic control surface (see hwcontrol.te); the app side already has set_prop on it.
 set_prop(slider_uewake, rm_ctrl_prop)
+
+# Inject the user-configured keycode through a virtual uinput device (XDA #337). /dev/uinput is
+# labelled uhid_device; fp_uewake uses the same access for its KEY_WAKEUP injector. Only needed
+# for the key-code slider action -- the daemon opens nothing unless that mode is selected.
+allow slider_uewake uhid_device:chr_file { open read write ioctl };

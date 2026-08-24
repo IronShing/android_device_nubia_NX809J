@@ -6,8 +6,12 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
-    <!-- Desktop integration (see DesktopIntegration.java). All signature-level, so the platform
-         certificate grants them; no privapp-permissions allowlist entry is required.
+    <!-- Desktop integration (see DesktopIntegration.java).
+         NOTE: the platform certificate is NOT sufficient on its own. This app is privileged
+         (/system_ext/priv-app), and signature|privileged permissions ALSO require an entry in
+         permissions/privapp-permissions-com.nubia.rmcontrol.xml. Without it,
+         PackageManagerService.systemReady() throws under ro.control_privapp_permissions=enforce
+         and the device boot-loops. MANAGE_APP_OPS_MODES is plain signature and needs no entry.
          MANAGE_APP_OPS_MODES  - pre-grant MagicDesk's display-over-apps op
          CHANGE_OVERLAY_PACKAGES + INTERACT_ACROSS_USERS - toggle the on-device desktop RRO -->
     <uses-permission android:name="android.permission.MANAGE_APP_OPS_MODES" />

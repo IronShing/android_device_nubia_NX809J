@@ -100,6 +100,14 @@ public class SettingsActivity extends Activity {
                 + "apply while offline and only while the switch above is on.");
         batteryStatsRow(root);
 
+        // ---- Interface ----
+        header(root, "Interface");
+        animationRow(root);
+        note(root, "Stock RedMagic runs its transitions faster than AOSP's default, which is a lot "
+                + "of why it feels quicker (XDA #339). \"Fast\" matches roughly what stock does. "
+                + "This is the same setting as Developer options > animation scales, so if you have "
+                + "already changed it there, this will show and overwrite that value.");
+
         // ---- Desktop ----
         header(root, "Desktop");
         desktopRow(root);
@@ -210,9 +218,10 @@ public class SettingsActivity extends Activity {
         // Kept short on purpose: this Spinner shares a horizontal row with its label, so a long
         // item ("Launch an app, home on slide back") forces the Spinner wide and squeezes the
         // "Slider action" text to a sliver. The row now splits 50/50 as well (see below).
-        final String[] modeNames = {"Do nothing", "Flashlight", "Launch app", "App + home"};
+        final String[] modeNames = {"Do nothing", "Flashlight", "Launch app", "App + home", "Key code"};
         final int[] modeVals = {SliderWatcher.MODE_NOTHING, SliderWatcher.MODE_TORCH,
-                                SliderWatcher.MODE_LAUNCH, SliderWatcher.MODE_LAUNCH_HOME};
+                                SliderWatcher.MODE_LAUNCH, SliderWatcher.MODE_LAUNCH_HOME,
+                                SliderWatcher.MODE_KEYCODE};
 
         LinearLayout modeRow = labelledRow(root, "Slider action");
         final Spinner mode = new Spinner(this);
@@ -261,12 +270,20 @@ public class SettingsActivity extends Activity {
             }
         });
 
+        keycodeRow(root, "Key code (slide to game)", SliderWatcher.PROP_KEY_ON, 183);
+        keycodeRow(root, "Key code (slide back)", SliderWatcher.PROP_KEY_OFF, 184);
+
         note(root, "On stock, the slider opens Game Space. That handler is part of RedMagic's own "
                 + "system software and does not exist here, so the slider does nothing until you "
                 + "give it a job above.\n\n"
                 + "It fires once per slide: pick \"Launch an app\" to open something when you slide "
                 + "towards the game position, or the third option to also return to the home screen "
-                + "when you slide back.");
+                + "when you slide back.\n\n"
+                + "\"Key code\" makes each slide send a key press instead, so remapper and automation "
+                + "apps (Key Mapper, Tasker) can bind it to anything they like. The slider is a "
+                + "switch in hardware and carries no key code of its own, which is why remappers "
+                + "cannot see it otherwise. F13-F24 are used because nothing on this phone sends "
+                + "them. Set a direction to \"None\" to have only one edge of the slide fire.");
     }
 
     // ---------- haptics: intensity + test ----------
@@ -446,6 +463,88 @@ public class SettingsActivity extends Activity {
                 Prop.set(key, Integer.toString(mins[pos]));
                 // Takes effect immediately if we are offline right now.
                 OfflineDoze.reapply(SettingsActivity.this);
+            }
+        });
+        row.addView(sp);
+    }
+
+    /**
+     * Key-code picker for the slider (XDA #337).
+     *
+     * <p>Offers F13-F24 because those are the only codes that are simultaneously unused by this
+     * device and mapped by Android's Generic.kl, so they arrive at apps as real Android key codes
+     * (KEYCODE_F13 ...) rather than being swallowed by the input stack. "None" leaves that
+     * direction unbound, which is what you want when only one edge of the slide should fire.
+     *
+     * <p>Values written are LINUX input codes -- slider_uewake feeds them straight to uinput.
+     */
+    private void keycodeRow(LinearLayout root, String title, final String key, int def) {
+        final int[] codes = new int[13];
+        final String[] names = new String[13];
+        codes[0] = 0; names[0] = "None";
+        for (int i = 1; i < 13; i++) {           // 183..194 == F13..F24
+            codes[i] = 182 + i;
+            names[i] = "F" + (12 + i) + "  (" + codes[i] + ")";
+        }
+
+        LinearLayout row = labelledRow(root, title);
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        int cur = idxOf(codes, parseInt(Prop.get(key, Integer.toString(def)), def));
+        sp.setSelection(clamp(cur, 0, names.length - 1));
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(key, Integer.toString(codes[pos]));
+            }
+        });
+        row.addView(sp);
+    }
+
+    /**
+     * UI animation speed (XDA #339, NX123Dos).
+     *
+     * <p>Writes the three platform animation scales together -- window, transition and animator --
+     * because changing only one leaves the UI visibly inconsistent (an activity that flies in but
+     * whose contents still fade at the old rate). A SMALLER scale means FASTER: 0.75 is about the
+     * 1.3x speed-up stock ships, 0 disables animation entirely.
+     *
+     * <p>These live in Settings.Global, so they need WRITE_SECURE_SETTINGS -- which this app holds
+     * and is allowlisted for (see permissions/privapp-permissions-com.nubia.rmcontrol.xml).
+     * They persist in /data, so the choice survives a reboot but not a factory reset.
+     */
+    private void animationRow(LinearLayout root) {
+        final float[] scales = {1.0f, 0.75f, 0.5f, 0.0f};
+        final String[] names = {"Default (AOSP)", "Fast (like stock)", "Faster", "Off (instant)"};
+
+        LinearLayout row = labelledRow(root, "Animation speed");
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+
+        float cur = 1.0f;
+        try {
+            cur = Settings.Global.getFloat(getContentResolver(),
+                    Settings.Global.WINDOW_ANIMATION_SCALE, 1.0f);
+        } catch (Exception ignored) {}
+        int sel = 0;
+        for (int i = 0; i < scales.length; i++) {
+            if (Math.abs(scales[i] - cur) < 0.01f) { sel = i; break; }
+        }
+        sp.setSelection(sel);
+
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                final float f = scales[pos];
+                try {
+                    Settings.Global.putFloat(getContentResolver(),
+                            Settings.Global.WINDOW_ANIMATION_SCALE, f);
+                    Settings.Global.putFloat(getContentResolver(),
+                            Settings.Global.TRANSITION_ANIMATION_SCALE, f);
+                    Settings.Global.putFloat(getContentResolver(),
+                            Settings.Global.ANIMATOR_DURATION_SCALE, f);
+                } catch (Exception e) {
+                    // Never let a settings write take the panel down.
+                    android.util.Log.w("RMControl", "animation scale write failed", e);
+                }
             }
         });
         row.addView(sp);
