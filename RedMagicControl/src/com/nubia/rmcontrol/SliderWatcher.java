@@ -55,6 +55,20 @@ final class SliderWatcher {
      */
     static final int MODE_TORCH     = 3;
 
+    /**
+     * Emit a configurable key code on each slide (XDA #337, NX123Dos), so key-remapper apps and
+     * automation tools have something to bind to.
+     *
+     * <p>The injection itself is done by the slider_uewake daemon, not here: a remapper has to see
+     * a real input device, and only the daemon can open /dev/uinput. This class deliberately takes
+     * no action for this mode -- it is listed only so the Settings UI and the daemon agree on the
+     * number. Key codes are LINUX input codes (KEY_F13 = 183 ...), not Android key codes.
+     */
+    static final int MODE_KEYCODE   = 4;
+
+    static final String PROP_KEY_ON  = "persist.sys.rm.slider.key_on";
+    static final String PROP_KEY_OFF = "persist.sys.rm.slider.key_off";
+
     private final Context mCtx;
     private String mLastEvent;
     /** One-shot proof that the property callback is actually being delivered to this process. */
@@ -128,6 +142,10 @@ final class SliderWatcher {
             setTorch(on);
             return;
         }
+
+        // Handled entirely by slider_uewake (it owns /dev/uinput). Acting here as well would
+        // double-fire the slide.
+        if (mode == MODE_KEYCODE) return;
 
         if (on) {
             launchConfiguredApp();
