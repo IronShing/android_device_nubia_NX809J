@@ -1,0 +1,36 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# Global LoudnessEnhancer makeup-gain daemon (/system_ext/bin/loudness).
+#
+# Without this domain the binary keeps the default system_file label, init cannot perform the
+# domain transition, and under ENFORCING the service NEVER STARTS:
+#   Could not start service: File /system_ext/bin/loudness (labeled "u:object_r:system_file:s0")
+#   has incorrect label or no domain transition from u:r:init:s0 ...
+# Observed on the shipped build 2026-08-30: the property was 1 and the gain 1000, init logged the
+# failure at boot, on the property trigger AND on manual `start loudness`, and the feature was
+# silently dead. Same class of bug the file_contexts comment already documents for hwcontrol.
+#
+# It runs as user audioserver so it holds MODIFY_AUDIO_ROUTING for a global-mix effect; all it
+# does is read its two properties and hold an AudioEffect open over binder to audioserver.
+
+type loudness, domain, coredomain;
+type loudness_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(loudness)
+
+# AudioEffect: binder to audioserver + find its service.
+binder_use(loudness)
+binder_call(loudness, audioserver)
+allow loudness audioserver_service:service_manager find;
+
+# ...and the REVERSE direction. binder_call(loudness, audioserver) only grants the outbound call
+# plus a reverse *transfer*; audioserver must CALL BACK into the effect client (its AudioOut_*
+# threads do, per the effect callback interface). Without this, boot logs:
+#   avc: denied { call } comm="AudioOut_4D" scontext=u:r:audioserver:s0 tcontext=u:r:loudness:s0
+# once per output thread. Observed 2026-08-30.
+binder_call(audioserver, loudness)
+
+# persist.sys.loudness.enabled / persist.sys.loudness_gain_mb (loudness_prop, see
+# property_contexts + rmcontrol.te which lets the app set them).
+get_prop(loudness, loudness_prop)

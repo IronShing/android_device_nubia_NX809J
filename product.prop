@@ -10,3 +10,80 @@
 # Lives in product (LOS-built, ships in our super); vendor.prop would NOT ship
 # because we ride stock vendor.
 use.voice.path.for.pcm.voip=true
+
+# ---- Remote Key Provisioning (RKP) ----
+# Without a provisioning URL the framework refuses outright — measured on device:
+#   $ cmd remote_provisioning certify default
+#   RemoteException: RKP is disabled. System configured with no default URL.
+# which comes straight from rkpdapp's own gate (RemoteProvisioningService.java:63,
+# `Settings.getDefaultUrl().isEmpty()`). Everything else was already in place:
+# com.android.rkpdapp is installed, the IRemotelyProvisionedComponent/default HAL is
+# registered, and `cmd remote_provisioning list` returns `default`. Only these props
+# were missing, so RKP never ran and a device whose factory keybox is lost or corrupt
+# had no way back. Nothing upstream sets them — tree-wide they appear only in
+# goldfish/cuttlefish/panther_car, because they are normally an OEM device.mk thing and
+# stock RedMagic sets them outside anything we inherit.
+#
+# ⚠️ Deliberately NOT setting remote_provisioning.{tee,strongbox}.rkp_only.
+# Those do NOT mean "prefer RKP" — they assert the device has NO factory-provisioned
+# attestation keys at all, which removes the factory-key path and makes attestation
+# depend entirely on a network round-trip to Google. On a unit whose keybox is intact
+# that is a downgrade. Set them per-unit, by hand, only when a keybox is known dead.
+#
+# Both shipped variants (MinimalGApps and FullGApps) include Play Store + GMS Core, so
+# this is unconditional; there is no de-Googled variant to keep offline despite what the
+# stale comment above NX809J_MINIMAL in evolution_NX809J.mk claims.
+# Of the five properties in the original suggestion, only these two are real:
+#   * enable_rkpd is READ BY NOTHING. Zero references across frameworks/,
+#     packages/modules/RemoteKeyProvisioning and system/, and it has no entry in
+#     property_contexts at all (which is why `setprop` on it is refused outright).
+#   * hostname is the ONLY switch. rkpdapp's Settings.getDefaultUrl() (Settings.java:248)
+#     reads exactly this one prop and returns "" when unset, which is what produces the
+#     "no default URL" refusal. Its own javadoc: "This value is set at build time by the
+#     device maker" -- so it belongs here, and it needs a reboot, as reported.
+# It is labelled remote_prov_prop and is not shell-writable, so this cannot be a runtime
+# toggle for non-rooted users; the build is the only place it can come from.
+# DISABLED 2026-08-28 after testing on hardware. Setting hostname DOES correctly enable RKP
+# -- verified: the error moved from "RKP is disabled. System configured with no default URL"
+# to a real call. But provisioning then fails inside the TEE:
+#     RkpdSystemInterface: Failed to generate CSR blob. Failed with 1
+#     android.os.ServiceSpecificException: (code 1)   = STATUS_FAILED
+# from IRemotelyProvisionedComponent.generateCertificateRequestV2() on the qti-keymint-hal.
+# That is the vendor/TEE refusing to produce a CSR; nothing on the ROM side can change it.
+#
+# Leaving hostname set is NOT harmless: rkpdapp schedules a WorkManager #PeriodicProvisioner#
+# job, so an enabled-but-impossible RKP wakes the device daily, opens a network connection and
+# fails, forever. With hostname unset that job bails immediately. So we keep it OFF until the
+# TEE side is shown to work.
+# remote_provisioning.hostname=remoteprovisioning.googleapis.com
+remote_provisioning.connect_timeout_millis=10000
+
+# ---- Loudness (V4A makeup gain) ----
+# Shipped ON at the top of the range. The stock ROM is audibly louder than AOSP; this
+# LoudnessEnhancer makeup gain is what closes that gap, so shipping it off makes the ROM
+# sound broken out of the box. loudness.rc starts the service on boot_completed when
+# enabled=1, so this is what makes it apply before the user ever opens RedMagic Control.
+# Both are persist props: the panel's Audio tab overrides them and that choice sticks.
+# Gain is in millibels, capped at 1000 (+10 dB) -- the same ceiling the panel's slider has.
+persist.sys.loudness.enabled=1
+persist.sys.loudness_gain_mb=1000
+
+# ---- Cooling defaults ----
+# Auto fan on out of the box: hwcontrol maps the hottest fan-relevant thermal zone to a fan
+# level, and below 40 C that level is 0, so an idle phone stays silent. Shipping it off meant
+# the fan never ran unless the user found the switch.
+persist.sys.rm.fan_auto=1
+# Cool while fast charging: >=2 A pulls in the fan AND the liquid pump (chargecool.active in
+# redmagic_hw_arm.rc drives both). This is the one time the phone gets hot with nobody holding
+# it. Default "auto" = the fan follows the same temperature curve as the Cooling fan setting
+# instead of sitting at one fixed speed (ChargeCooling publishes chargecool.active=2 for that,
+# which redmagic_hw_arm.rc handles by raising the rail + pump and leaving the level alone).
+persist.sys.rm.chargecool=1
+persist.sys.rm.chargecool.fan=auto
+# Fan-ring RGB tracks the automatic fan, using the user's own fan-ring colour from Lighting.
+persist.sys.rm.fan_rgb_follow=1
+# Cool while gaming, also on "auto". gameperfd is the single owner of game-mode cooling; on
+# "auto" it leaves fan_auto on so the curve keeps driving the fan instead of pinning full blast,
+# and it turns the pump on. "Cool while gaming" off means it touches neither.
+persist.sys.rm.gamecool=1
+persist.sys.rm.gamecool.fan=auto

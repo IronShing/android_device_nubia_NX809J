@@ -1,0 +1,27 @@
+// Device Wi-Fi capability RRO for the AOSP wifi mainline module.
+//
+// The stock vendor image ships two Wi-Fi resource overlays,
+// /vendor/overlay/WifiResMainlineTarget.apk and WifiResMainlineTarget_spf.apk,
+// but both declare targetPackage="com.google.android.wifi.resources" — the
+// GMS build of the wifi module. We ship the AOSP module, whose resources APK
+// is "com.android.wifi.resources", so both vendor overlays resolve to a
+// missing target ("cmd overlay list" shows them as ---) and every
+// device-specific Wi-Fi capability silently falls back to the AOSP default.
+//
+// The visible consequence is the hotspot: config_wifi5ghzSupport defaults to
+// false, so ApConfigUtil.isSoftApBandSupported(BAND_5GHZ) is false, the
+// SoftApCapability carries an empty 5 GHz channel list, and picking "5 GHz" in
+// Settings > Hotspot > Speed & compatibility tears the AP down and brings it
+// back on 2.4 GHz ("Can not start softAp with band 5Ghz not supported").
+//
+// This overlay re-applies the vendor's values against the AOSP target package.
+// The first block is a verbatim merge of the two vendor overlays above — keep it
+// in sync when the vendor blobs are re-extracted. The second block is four
+// additions that enable the 6 GHz hotspot, which the vendor never turned on even
+// though the chip supports it; see the comments in res/values/config.xml.
+runtime_resource_overlay {
+    name: "NX809JWifiOverlay",
+    resource_dirs: ["res"],
+    product_specific: true,
+    sdk_version: "current",
+}

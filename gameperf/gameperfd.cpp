@@ -58,21 +58,34 @@ namespace {
 // Values are property-tunable so they can be validated/tuned on-device without a rebuild:
 //   persist.sys.rm.gameperf.c0_mhz   (default 2496) - cluster 0 min freq, MHz
 //   persist.sys.rm.gameperf.c1_mhz   (default 3000) - cluster 1 / prime min freq, MHz
-//   persist.sys.rm.gameperf.gpu_lvl  (default 0)    - kgsl min power level (0 = top/highest freq)
+//   persist.sys.rm.gameperf.gpu_lvl  (default -1)   - kgsl min power level; -1 = NOT requested
 // The perf HAL rounds each freq to the nearest supported OPP. Unknown opcodes are ignored by the
 // HAL, so an inapplicable cluster opcode is harmless.
+//
+// GPU OWNERSHIP (2026-09-02, XDA Bobo9996: "performance never drops below 1200"). This lock used
+// to carry 0x42804000 = min_pwrlevel 0 unconditionally, which pins the GPU at its 1200 MHz top
+// level for as long as a Performance-mode game is open -- menus and loading screens included --
+// and silently overrides the "GPU profile while gaming" choice in RedMagic Control: min_pwrlevel
+// is a HARDER floor than the GMU min_freq_mhz tunable that profile writes, so Balanced / 902 /
+// 1050 were all dead UI and every user was on "Ultimate" without asking for it (which also
+// fights thermal-engine's 826 MHz skin cap instead of adding speed). The GPU floor now has one
+// owner: redmagic_hw_arm.rc writing min_freq_mhz from persist.sys.rm.gamegpu.mhz. The opcode is
+// kept only as an opt-in tuning knob (gpu_lvl >= 0) so it can still be tested live.
 std::vector<int> BuildBoostArgs() {
   auto prop = [](const char* k, int def) {
     return android::base::GetIntProperty(k, def, 0, 6000);
   };
   const int c0 = prop("persist.sys.rm.gameperf.c0_mhz", 2496);
   const int c1 = prop("persist.sys.rm.gameperf.c1_mhz", 3000);
-  const int gpu = prop("persist.sys.rm.gameperf.gpu_lvl", 0);
+  const int gpu = android::base::GetIntProperty("persist.sys.rm.gameperf.gpu_lvl", -1, -1, 17);
   std::vector<int> a;
   a.push_back(0x40800000); a.push_back(c0);   // cluster 0 (cores 0-5) min freq
   a.push_back(0x40800010); a.push_back(c1);   // cluster 1 (prime cores 6-7) min freq
-  a.push_back(0x42804000); a.push_back(gpu);  // GPU min power level (0 = max)
-  LOG(INFO) << "gameperfd: boost args c0=" << c0 << "MHz c1=" << c1 << "MHz gpu_lvl=" << gpu;
+  if (gpu >= 0) {
+    a.push_back(0x42804000); a.push_back(gpu);  // GPU min power level (0 = max), opt-in only
+  }
+  LOG(INFO) << "gameperfd: boost args c0=" << c0 << "MHz c1=" << c1 << "MHz gpu_lvl="
+            << gpu << (gpu >= 0 ? "" : " (GPU left to the gamegpu profile)");
   return a;
 }
 
@@ -143,23 +156,69 @@ void SetNetAffinity(bool on) {
 // Auto-fan (persist.sys.rm.fan_auto) is parked during the boost so its temp loop doesn't pull the
 // level back down, then restored. Requires the module sepolicy.rule granting ksu set on rm_hw_prop.
 std::string g_savedFan, g_savedCooling, g_savedFanAuto;
+// True while the fan/pump are boosted -- during a game AND during the post-game
+// cooling hold. Gating the state-save on this is what stops a game launched during
+// a cooldown from saving the already-boosted 5/on values as the "user" state.
+bool g_boostActive = false;
 
 void CoolingBoost(bool on) {
   if (on) {
-    g_savedFanAuto = android::base::GetProperty("persist.sys.rm.fan_auto", "");
-    g_savedFan = android::base::GetProperty("persist.sys.fan.level", "0");
-    g_savedCooling = android::base::GetProperty("persist.sys.cooling.level", "0");
-    android::base::SetProperty("persist.sys.rm.fan_auto", "0");     // stop auto-fan fighting us
-    android::base::SetProperty("persist.sys.fan.level", "5");       // full fan (FanTile maxLevel=5)
+    // "Cool while gaming" off: leave the fan and pump entirely alone.
+    if (!android::base::GetBoolProperty("persist.sys.rm.gamecool", true)) return;
+    if (!g_boostActive) {
+      // capture the real pre-game state exactly once
+      g_savedFanAuto = android::base::GetProperty("persist.sys.rm.fan_auto", "");
+      g_savedFan = android::base::GetProperty("persist.sys.fan.level", "0");
+      g_savedCooling = android::base::GetProperty("persist.sys.cooling.level", "0");
+    }
+    // Honour the user's own two settings instead of hardcoding full blast. "Cool while gaming"
+    // off means we never touch cooling at all; "Fan speed while gaming = Auto" means leave the
+    // temperature curve in charge rather than pinning a level -- which is why fan_auto is set
+    // rather than cleared in that branch. Pinning 5 unconditionally made both controls dead UI.
+    const std::string want =
+        android::base::GetProperty("persist.sys.rm.gamecool.fan", "auto");
+    if (want == "auto") {
+      android::base::SetProperty("persist.sys.rm.fan_auto", "1");   // curve drives the fan
+    } else {
+      android::base::SetProperty("persist.sys.rm.fan_auto", "0");   // stop auto-fan fighting us
+      android::base::SetProperty("persist.sys.fan.level", want);
+    }
     android::base::SetProperty("persist.sys.cooling.level", "1");   // pump ON = full (piezo is on/off)
+    g_boostActive = true;
   } else {
+    if (!g_boostActive) return;  // nothing to restore
     android::base::SetProperty("persist.sys.fan.level", g_savedFan.empty() ? "0" : g_savedFan);
     android::base::SetProperty("persist.sys.cooling.level",
                                g_savedCooling.empty() ? "0" : g_savedCooling);
     if (!g_savedFanAuto.empty()) {
       android::base::SetProperty("persist.sys.rm.fan_auto", g_savedFanAuto);
     }
+    g_boostActive = false;
   }
+}
+
+// Skin temperature in whole degrees C, from the thermal zone thermal-engine's
+// SKIN_GPU_MONITOR watches (sensor "skin-msm-therm"). Used to hold cooling after a
+// game exits until the phone is no longer hot. Returns -1 if it cannot be read, in
+// which case the caller falls back to restoring cooling immediately.
+std::string g_skinTempPath;
+int ReadSkinTempC() {
+  if (g_skinTempPath.empty()) {
+    g_skinTempPath = "-";  // sentinel: searched, not found
+    for (int i = 0; i < 200; i++) {
+      std::string base = "/sys/class/thermal/thermal_zone" + std::to_string(i);
+      std::ifstream tf(base + "/type");
+      if (!tf.good()) break;  // no more zones
+      std::string type;
+      std::getline(tf, type);
+      if (type == "skin-msm-therm") { g_skinTempPath = base + "/temp"; break; }
+    }
+  }
+  if (g_skinTempPath == "-") return -1;
+  std::ifstream f(g_skinTempPath);
+  long milli;
+  if (!(f >> milli)) return -1;
+  return static_cast<int>(milli / 1000);  // QCOM thermal zones report millidegrees
 }
 
 bool LoadPerfClient() {
@@ -216,26 +275,58 @@ int main(int argc, char** argv) {
 
   int handle = 0;
   std::string last;
+  int cooldownTicks = 0;  // >0 while holding fan/pump after a game exit; one tick = one 2s loop
+
   while (true) {
     std::string v = android::base::GetProperty("persist.sys.power_mode_perf", "0");
+
     if (v != last) {
-      if (v == "1" && handle <= 0) {
+      if (v == "1") {
         // duration 0 = hold until explicitly released. Args are rebuilt per-acquire so a prop
         // change takes effect on the next game launch (no reboot needed while tuning).
-        std::vector<int> args = BuildBoostArgs();
-        handle = g_acq(0, 0, args.data(), static_cast<int>(args.size()));
+        if (handle <= 0) {
+          std::vector<int> args = BuildBoostArgs();
+          handle = g_acq(0, 0, args.data(), static_cast<int>(args.size()));
+        }
         SetNetAffinity(true);
-        CoolingBoost(true);
+        CoolingBoost(true);     // (re)assert; a game started mid-cooldown cancels the hold
+        cooldownTicks = 0;
         LOG(INFO) << "gameperfd: boost ON, handle=" << handle;
-      } else if (v != "1" && handle > 0) {
-        g_rel(handle);
+      } else {
+        // Performance and network affinity revert immediately -- no reason to hold clocks
+        // once the game is gone.
+        if (handle > 0) { g_rel(handle); handle = 0; }
         SetNetAffinity(false);
-        CoolingBoost(false);
-        LOG(INFO) << "gameperfd: boost OFF";
-        handle = 0;
+        // Cooling lingers: keep the fan/pump running and restore the user's setting only
+        // once the phone has cooled, so exiting a heavy game does not leave residual heat
+        // soaking. Capped by cooldown_max_s so it can never run away.
+        int maxSec = android::base::GetIntProperty(
+            "persist.sys.rm.gameperf.cooldown_max_s", 120, 0, 600);
+        if (g_boostActive && maxSec > 0) {
+          cooldownTicks = maxSec / 2;
+          LOG(INFO) << "gameperfd: boost OFF, cooling hold up to " << maxSec << "s";
+        } else {
+          CoolingBoost(false);  // cooldown disabled -> restore now (original behaviour)
+          cooldownTicks = 0;
+          LOG(INFO) << "gameperfd: boost OFF";
+        }
       }
       last = v;
     }
+
+    // Service the post-game cooling hold: restore when skin hits the target, when the
+    // sensor is unreadable, or at the time cap.
+    if (cooldownTicks > 0 && v != "1") {
+      int target = android::base::GetIntProperty(
+          "persist.sys.rm.gameperf.cooldown_c", 39, 20, 90);
+      int skin = ReadSkinTempC();
+      if (skin < 0 || skin <= target || --cooldownTicks <= 0) {
+        CoolingBoost(false);
+        cooldownTicks = 0;
+        LOG(INFO) << "gameperfd: cooling hold released, skin=" << skin << "C";
+      }
+    }
+
     sleep(2);
   }
   return 0;

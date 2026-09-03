@@ -1,14 +1,25 @@
 package com.nubia.rmcontrol;
 
 import android.app.Activity;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.ServiceManager;
+import android.security.rkp.IGetKeyCallback;
+import android.security.rkp.IGetRegistrationCallback;
+import android.security.rkp.IRegistration;
+import android.security.rkp.IRemoteProvisioning;
+import android.security.rkp.RemotelyProvisionedKey;
 import android.provider.Settings;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.Toast;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -25,65 +36,163 @@ import android.widget.TextView;
 public class SettingsActivity extends Activity {
 
     // effect: Off/Constant/Breathing/Flash/Flow -> aw22xxx effect codes
-    private static final String[] FX_NAMES = {"Off", "Constant", "Breathing", "Flash", "Flow"};
-    private static final int[]    FX_VALS  = {0, 2, 3, 4, 6};
-    // color: 1..9 per the ColorfulLight doc
-    private static final String[] COL_NAMES = {"Red", "Orange", "Yellow", "Green", "Cyan", "Light Blue", "Blue", "Purple", "Pink"};
+    // LED tables. Source of truth: austineyoung2000/Redmagic-Control-Center (working
+    // third-party RM control app), cross-checked against which aw_*.bin ship and verified
+    // on this device (colour 5 was commanded and rendered green).
+    //
+    // Value written to the effect node is 0x[ZONE]00[MODE]00[COLOR]; cfg=1 commits.
+    // Zones: 1=Logo, 2=Shoulder, 3=Fan ring.
+    //
+    // Colour index 2 DOES NOT EXIST -- there is no *_2.bin for any zone and the reference
+    // app skips it. (The r/RedMagic guide lists 2=Orange; that is wrong.)
+    //
+    // 101-108 are the multi-colour "RGB" presets. They ship for the FAN ring only
+    // (aw_fan{2,3,4,6,a}_10{1..8}.bin), which is why they are appended for that zone alone.
+    private static final String[] FX_NAMES = {"Off", "Constant", "Breathing", "Flash"};
+    private static final int[]    FX_VALS  = {0, 2, 3, 4};
+
+    private static final String[] COL_NAMES = {"Red", "Orange", "Yellow", "Green",
+                                               "Cyan", "Blue", "Purple", "Pink"};
+    private static final int[]    COL_VALS  = {1, 3, 4, 5, 6, 7, 8, 9};
+    // Fan ring only: the RGB / multi-colour presets.
+    private static final String[] RGB_NAMES = {"RGB 1", "RGB 2", "RGB 3", "RGB 4",
+                                               "RGB 5", "RGB 6", "RGB 7", "RGB 8"};
+    private static final int[]    RGB_VALS  = {101, 102, 103, 104, 105, 106, 107, 108};
     private static final int[]    COL_ARGB  = {0xFFF44336, 0xFFFF9800, 0xFFFFEB3B, 0xFF4CAF50, 0xFF00BCD4, 0xFF03A9F4, 0xFF2196F3, 0xFF9C27B0, 0xFFE91E63};
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         int pad = dp(16);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+
+        // ---------------------------------------------------------------
+        // Tabbed layout. Each section-builder below takes its parent layout,
+        // so we just hand it the page for its tab instead of one long scroll.
+        // Framework views only (no androidx): a horizontal tab strip on top and
+        // one ScrollView per tab in a FrameLayout, one visible at a time.
+        // ---------------------------------------------------------------
+        LinearLayout cooling  = newPage(pad);
+        LinearLayout lighting = newPage(pad);
+        LinearLayout controls = newPage(pad);
+        LinearLayout audio    = newPage(pad);
+        LinearLayout display  = newPage(pad);
+        LinearLayout system   = newPage(pad);
 
         // ---- Cooling ----
-        header(root, "Cooling");
-        levelRow(root, "Cooling fan", "persist.sys.fan.level",
-                new String[]{"Off", "1", "2", "3", "4", "5"}, false);
-        rmSwitch(root, "Auto fan (by temperature)", "persist.sys.rm.fan_auto", false);
-        levelRow(root, "Liquid cooling pump", "persist.sys.cooling.level",
+        header(cooling, "Cooling");
+        fanLevelRow(cooling, "Cooling fan");
+        levelRow(cooling, "Liquid cooling pump", "persist.sys.cooling.level",
                 new String[]{"Off", "Low", "Medium", "High"}, false);
+        chargeCoolSwitch(cooling, "Cool while fast charging");
+        chargeFanLevelRow(cooling, "Fan speed while charging");
+        note(cooling, "Fast charging is the one time this phone gets hot with nobody holding it, so "
+                + "charging turns the cooling on by itself: the liquid pump runs, and the fan runs "
+                + "at whatever speed you pick here. On \"Auto\" the fan follows the same temperature "
+                + "curve as the Cooling fan setting instead of sitting at one fixed speed.");
+        rmSwitch(cooling, "Fan ring RGB while auto fan runs", "persist.sys.rm.fan_rgb_follow", true);
+        note(cooling, "Lights the fan ring whenever the automatic fan is actually spinning, so the "
+                + "ring tells you the phone is cooling itself. It uses the fan ring's own colour "
+                + "and effect from the Lighting tab; if that zone's effect is off it keeps your "
+                + "colour and just makes it steady, so pick the colour there. Your Lighting setting is restored the moment the fan stops, and this does "
+                + "nothing unless the Cooling fan is set to Auto.");
+        rmSwitch(cooling, "Cool while gaming", "persist.sys.rm.gamecool", true);
+        gameFanLevelRow(cooling, "Fan speed while gaming");
+        // Asked repeatedly on XDA: users set this to Off, hear the fan anyway, and report it as a
+        // bug. It only governs the gaming boost -- the main "Cooling fan" above is a separate
+        // control and ships on Auto.
+        note(cooling, "This only controls the extra cooling while you are gaming. It does not turn "
+                + "the fan off: \"Cooling fan\" at the top of this tab is the main control and is "
+                + "set to Auto out of the box, so the phone still cools itself by temperature. Set "
+                + "that one to Off if you want the fan silent.");
+        gpuProfileRow(cooling);
+        // GamePerfWifi has no setting of its own -- it is automatic and therefore invisible, and
+        // people have gone looking for a "wifi low latency" toggle that does not exist. Say so.
+        note(cooling, "Launching a game from Game Space also maxes out WiFi performance "
+                + "automatically \u2014 the WiFi radio is held out of power-saving for as long as the "
+                + "game is in the foreground, and released when you leave it. There is no setting "
+                + "for this and nothing to turn on; it applies to games you have added to Game "
+                + "Space with Performance mode enabled.");
 
         // ---- Lighting ---- (position codes: logo=1 shoulder=2 fan=3)
-        header(root, "Lighting (RGB) — experimental");
-        ledZone(root, "Logo", "persist.sys.rm.led.logo", 1);
-        ledZone(root, "Shoulder strip", "persist.sys.rm.led.shoulder", 2);
-        ledZone(root, "Fan ring", "persist.sys.rm.led.fan", 3);
+        header(lighting, "Lighting (RGB) — experimental");
+        ledZone(lighting, "Logo", "persist.sys.rm.led.logo", 1);
+        ledZone(lighting, "Shoulder strip", "persist.sys.rm.led.shoulder", 2);
+        ledZone(lighting, "Fan ring", "persist.sys.rm.led.fan", 3);
 
         // ---- Shoulder triggers ----
-        header(root, "Shoulder triggers");
-        rmSwitch(root, "Left trigger (L)", "persist.sys.rm.trigger_left", true);
-        rmSwitch(root, "Right trigger (R)", "persist.sys.rm.trigger_right", true);
+        header(controls, "Shoulder triggers");
+        rmSwitch(controls, "Left trigger (L)", "persist.sys.rm.trigger_left", true);
+        rmSwitch(controls, "Right trigger (R)", "persist.sys.rm.trigger_right", true);
 
         // ---- Magic slider (Settings.System, stock key) ----
-        header(root, "Magic slider");
-        sliderRow(root);
+        header(controls, "Magic slider");
+        sliderRow(controls);
 
         // ---- Haptics ----
-        header(root, "Haptics");
-        haptics(root);
+        header(controls, "Haptics");
+        haptics(controls);
 
         // ---- Touch ----
-        header(root, "Touch");
-        rmSwitch(root, "Edge touch rejection (anti-grip)", "persist.sys.rm.edge_reject", true);
+        header(controls, "Touch");
+        rmSwitch(controls, "Edge touch rejection (anti-grip)", "persist.sys.rm.edge_reject", true);
 
         // ---- Audio ----
-        header(root, "Audio");
-        addSwitch(root, "Loudness (V4A makeup gain)", "persist.sys.loudness.enabled");
-        loudnessGain(root);
+        header(audio, "Audio");
+        // On by default: the stock ROM is audibly louder than AOSP and this makeup gain is what
+        // closes that gap, so shipping it off makes the ROM sound broken out of the box. The
+        // shipped default is also set in product.prop so the daemon applies it before the user
+        // ever opens this panel; the default here only has to agree with it.
+        // NOT ViPER4Android. This drives our own AOSP LoudnessEnhancer daemon
+        // (/system_ext/bin/loudness). The old label "Loudness (V4A makeup gain)" implied it
+        // configured V4A and caused real confusion -- a user with V4A switched off saw this on and
+        // reasonably expected V4A to be doing something. They are complementary: V4A shapes the
+        // sound, this adds raw gain on top.
+        addSwitch(audio, "Extra loudness (makeup gain)", "persist.sys.loudness.enabled", true);
+        loudnessGain(audio);
+        note(audio, "Adds raw volume on top of whatever else is running, with a built-in limiter. "
+                + "This is NOT ViPER4Android \u2014 V4A is a separate app with its own settings, and "
+                + "the two work together: V4A shapes the sound, this makes it louder.");
+
+        // ---- Display: external display refresh ----
+        header(display, "External display");
+        displayRefreshRow(display);
+        note(display, "For an external screen over USB-C (dock or adapter). If the picture drops "
+                + "out, glitches or never appears, the cable or hub probably cannot carry the "
+                + "bandwidth the screen is asking for. Pick a smaller mode here and the phone "
+                + "pins the display to it.\n\n"
+                + "Work DOWN the list: lower RESOLUTION is what actually reduces the load. "
+                + "Lowering only the refresh often does not \u2014 1080p at 50Hz and at 60Hz both "
+                + "run at 148.5MHz on this hardware, because the 50Hz timing just has wider "
+                + "blanking (measured).\n\n"
+                + "The list is read from the connected screen, so it only offers modes that screen "
+                + "supports. It applies when the phone next detects the display, not immediately "
+                + "\u2014 so after choosing, unplug and replug the cable.");
+
+        // ---- Interface ----
+        header(display, "Interface");
+        animationRow(display);
+        note(display, "Stock RedMagic runs its transitions faster than AOSP's default, which is a lot "
+                + "of why it feels quicker (XDA #339). \"Fast\" matches roughly what stock does. "
+                + "This is the same setting as Developer options > animation scales, so if you have "
+                + "already changed it there, this will show and overwrite that value.");
+
+        // ---- Desktop ----
+        header(display, "Desktop");
+        desktopRow(display);
 
         // ---- Wake ----
-        header(root, "Wake");
-        addSwitch(root, getString(R.string.tile_fpwake), "persist.sys.fp_wake.enabled");
-        addSwitch(root, getString(R.string.tile_dt2w), "persist.sys.dt2w.enabled");
+        header(system, "Wake");
+        addSwitch(system, getString(R.string.tile_fpwake), "persist.sys.fp_wake.enabled");
+        addSwitch(system, getString(R.string.tile_dt2w), "persist.sys.dt2w.enabled");
+
+        // ---- Attestation ----
+        header(system, "Attestation");
+        rkpRow(system);
 
         // ---- Battery ----
-        header(root, "Battery");
-        dozeOffline(root);
-        note(root, "When the phone has no network at all — airplane mode with WiFi off, or no "
+        header(system, "Battery");
+        dozeOffline(system);
+        note(system, "When the phone has no network at all — airplane mode with WiFi off, or no "
                 + "signal — Android still wakes it every few minutes to run background work it "
                 + "cannot actually do. This makes it stay asleep longer in that situation.\n\n"
                 + "It switches itself off the moment any network appears, so notifications are "
@@ -91,31 +200,243 @@ public class SettingsActivity extends Activity {
                 + "off there too.\n\n"
                 + "Alarms, timers and reminders always ring, on or off. Only offline background "
                 + "work (local backups, indexing) waits longer. Expect a small saving.");
-        minutesRow(root, "Light doze window", OfflineDoze.KEY_LIGHT_IDLE, OfflineDoze.DEF_LIGHT_IDLE);
-        minutesRow(root, "Light doze maximum", OfflineDoze.KEY_LIGHT_MAX, OfflineDoze.DEF_LIGHT_MAX);
-        minutesRow(root, "Deep doze maintenance", OfflineDoze.KEY_IDLE_PENDING, OfflineDoze.DEF_IDLE_PENDING);
-        minutesRow(root, "Deep doze maximum", OfflineDoze.KEY_MAX_PENDING, OfflineDoze.DEF_MAX_PENDING);
-        note(root, "How long the phone sleeps between wake-ups while offline. Android's own "
+        minutesRow(system, "Light doze window", OfflineDoze.KEY_LIGHT_IDLE, OfflineDoze.DEF_LIGHT_IDLE);
+        minutesRow(system, "Light doze maximum", OfflineDoze.KEY_LIGHT_MAX, OfflineDoze.DEF_LIGHT_MAX);
+        minutesRow(system, "Deep doze maintenance", OfflineDoze.KEY_IDLE_PENDING, OfflineDoze.DEF_IDLE_PENDING);
+        minutesRow(system, "Deep doze maximum", OfflineDoze.KEY_MAX_PENDING, OfflineDoze.DEF_MAX_PENDING);
+        note(system, "How long the phone sleeps between wake-ups while offline. Android's own "
                 + "values are 5 / 30 / 5 / 10 min — higher means fewer wake-ups. These only "
                 + "apply while offline and only while the switch above is on.");
-        batteryStatsRow(root);
+        batteryStatsRow(system);
 
-        // ---- Interface ----
-        header(root, "Interface");
-        animationRow(root);
-        note(root, "Stock RedMagic runs its transitions faster than AOSP's default, which is a lot "
-                + "of why it feels quicker (XDA #339). \"Fast\" matches roughly what stock does. "
-                + "This is the same setting as Developer options > animation scales, so if you have "
-                + "already changed it there, this will show and overwrite that value.");
-
-        // ---- Desktop ----
-        header(root, "Desktop");
-        desktopRow(root);
-
-        ScrollView sv = new ScrollView(this);
-        sv.addView(root);
-        setContentView(sv);
+        setContentView(buildTabbedRoot(
+                new String[]{"Cooling", "Lighting", "Controls", "Audio", "Display", "System"},
+                new LinearLayout[]{cooling, lighting, controls, audio, display, system}));
         setTitle(R.string.app_name);
+    }
+
+    private int sysBarPx(String name) {
+        int id = getResources().getIdentifier(name, "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : 0;
+    }
+    private int statusBarPx() { int h = sysBarPx("status_bar_height"); return h > 0 ? h : dp(24); }
+    private int navBarPx() { return sysBarPx("navigation_bar_height"); }
+
+    /** One tab page: a vertical column, padded, ready for section builders. */
+    private LinearLayout newPage(int pad) {
+        LinearLayout p = new LinearLayout(this);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setPadding(pad, pad, pad, pad);
+        return p;
+    }
+
+    /**
+     * Framework-only tab container (no androidx): a horizontally scrollable tab
+     * strip on top and one ScrollView per page in a FrameLayout, one visible at
+     * a time. Selected tab is accented + underlined.
+     */
+    private View buildTabbedRoot(final String[] titles, final LinearLayout[] pages) {
+        final int n = pages.length;
+        final int accent = accentColor();
+        final int dim = 0x99888888;
+
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        // Keep the tab strip out from under the status bar and the last rows out from
+        // under the nav bar. Prefer live insets (correct with cutouts/gesture nav);
+        // fall back to the framework dimens. Without this the tab strip rendered under
+        // the status bar and its taps were swallowed by it.
+        col.setPadding(0, statusBarPx(), 0, navBarPx());
+        col.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets sb =
+                    insets.getInsets(android.view.WindowInsets.Type.systemBars());
+            v.setPadding(sb.left, sb.top, sb.right, sb.bottom);
+            return insets;
+        });
+
+        final FrameLayout host = new FrameLayout(this);
+        final ScrollView[] scrolls = new ScrollView[n];
+        for (int i = 0; i < n; i++) {
+            ScrollView sv = new ScrollView(this);
+            sv.addView(pages[i]);
+            sv.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
+            scrolls[i] = sv;
+            host.addView(sv, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
+        }
+
+        // Equal-width tab strip: all tabs always visible (no horizontal scroll), so
+        // none can hide off-screen.
+        final LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+
+        final TextView[] tv = new TextView[n];
+        final View[] under = new View[n];
+        for (int i = 0; i < n; i++) {
+            final int idx = i;
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setPadding(dp(2), dp(12), dp(2), 0);
+
+            TextView t = new TextView(this);
+            t.setText(titles[i]);
+            t.setAllCaps(true);
+            t.setMaxLines(1);
+            t.setGravity(Gravity.CENTER);
+            // Six equal-width cells on a 1216px panel leave ~67dp each, which is not enough for
+            // "LIGHTING"/"CONTROLS" at a fixed 12sp: the label was clipped mid-word ("LIGHTIN",
+            // "CONTRO"). Autosize shrinks only the labels that need it, so the short ones keep
+            // the full size. setTextSize() is ignored once autosizing is on, hence it is gone.
+            t.setAutoSizeTextTypeUniformWithConfiguration(8, 12, 1, TypedValue.COMPLEX_UNIT_SP);
+            // MATCH_PARENT, not the default WRAP_CONTENT: autosizing shrinks text to fit the
+            // view's own width, and a WRAP_CONTENT label is measured at its desired width, so it
+            // would never shrink and the clipping would survive the fix.
+            t.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            t.setTextColor(i == 0 ? accent : dim);
+            t.setTypeface(null, i == 0 ? android.graphics.Typeface.BOLD
+                                       : android.graphics.Typeface.NORMAL);
+            tv[i] = t;
+            cell.addView(t);
+
+            View u = new View(this);
+            LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(3));
+            ulp.topMargin = dp(10);
+            u.setLayoutParams(ulp);
+            u.setBackgroundColor(i == 0 ? accent : 0x00000000);
+            under[i] = u;
+            cell.addView(u);
+
+            cell.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    for (int k = 0; k < n; k++) {
+                        scrolls[k].setVisibility(k == idx ? View.VISIBLE : View.GONE);
+                        tv[k].setTextColor(k == idx ? accent : dim);
+                        tv[k].setTypeface(null, k == idx ? android.graphics.Typeface.BOLD
+                                                         : android.graphics.Typeface.NORMAL);
+                        under[k].setBackgroundColor(k == idx ? accent : 0x00000000);
+                    }
+                }
+            });
+            tabs.addView(cell, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        }
+
+        View divider = new View(this);
+        divider.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        divider.setBackgroundColor(0x22888888);
+
+        col.addView(tabs, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        col.addView(divider);
+        col.addView(host, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        return col;
+    }
+
+    // ---------- external display: persistent caps ----------
+    /**
+     * Two caps ("no more than 1080p", "no more than 60 Hz") re-applied automatically on every
+     * connection by {@link ExternalDisplay}. This replaced a per-display mode picker: XDA
+     * feedback (NX123Dos, 2026-08-31) pointed out that every connect is a new display id, so a
+     * per-display choice never survives -- while the real limit belongs to the cable/hub and is
+     * the same for every screen. Set it once, forget it.
+     */
+    private TextView mDpHint;
+
+    private static final String[] RES_LABELS = { "Auto (max)", "1080p", "720p", "480p" };
+    private static final String[] RES_VALUES = { "auto", "1080", "720", "480" };
+    private static final String[] HZ_LABELS  = { "Auto (max)", "90 Hz", "60 Hz", "30 Hz" };
+    private static final String[] HZ_VALUES  = { "auto", "90", "60", "30" };
+
+    private static int indexOf(String[] values, String v) {
+        for (int i = 0; i < values.length; i++) if (values[i].equals(v)) return i;
+        return 0;
+    }
+
+    private void capRow(LinearLayout page, String title, String prop,
+                        String[] labels, String[] values) {
+        LinearLayout row = labelledRow(page, title);
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        sp.setSelection(indexOf(values, Prop.get(prop, "auto")));
+        row.addView(sp);
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                final String want = values[pos];
+                if (want.equals(Prop.get(prop, "auto"))) return;   // includes the initial callback
+                Prop.set(prop, want);
+                applyDpCaps();
+            }
+        });
+    }
+
+    private void displayRefreshRow(LinearLayout page) {
+        capRow(page, "Max resolution", ExternalDisplay.PROP_MAX_RES, RES_LABELS, RES_VALUES);
+        capRow(page, "Max refresh rate", ExternalDisplay.PROP_MAX_HZ, HZ_LABELS, HZ_VALUES);
+
+        LinearLayout applyRow = labelledRow(page, "Apply to the connected screen");
+        Button apply = new Button(this);
+        apply.setText("Apply now");
+        apply.setOnClickListener(v -> applyDpCaps());
+        applyRow.addView(apply);
+
+        mDpHint = new TextView(this);
+        mDpHint.setTextSize(12);
+        mDpHint.setAlpha(0.7f);
+        mDpHint.setPadding(0, 0, 0, dp(8));
+        page.addView(mDpHint);
+        refreshDpHint(null);
+    }
+
+    /** Resolve the caps against the attached screen and report honestly what happened. */
+    private void applyDpCaps() {
+        final ExternalDisplay.Result r = ExternalDisplay.apply(this, true);
+        refreshDpHint(r);
+        if (!r.connected) {
+            toast("Saved \u2014 applies when a screen is connected");
+        } else if (!r.fits) {
+            toast("No mode within the limits \u2014 using the screen's best instead");
+        } else if (r.applied == null) {
+            toast("Auto \u2014 using the screen's own preference");
+        } else {
+            toast(r.applied.label());
+        }
+    }
+
+    private void refreshDpHint(ExternalDisplay.Result r) {
+        if (mDpHint == null) return;
+        final String base = "Caps for any external screen. Lower the RESOLUTION first \u2014 measured "
+                + "on this hardware, 1080p at 50 Hz and 60 Hz both run at 148.5 MHz because the "
+                + "50 Hz timing just has wider blanking, while 720p60 is half that.";
+        String state = "";
+        if (r != null) {
+            if (!r.connected) {
+                state = "\n\nNo external screen detected right now.";
+            } else if (!r.fits) {
+                state = "\n\nThe connected screen offers nothing within these limits, so its best "
+                        + "mode is used instead rather than losing the picture.";
+            } else if (r.applied != null) {
+                state = "\n\nConnected screen set to " + r.applied.label() + ".";
+            }
+        }
+        mDpHint.setText(base + state);
+        mDpHint.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (mDpHint != null) refreshDpHint(ExternalDisplay.apply(this, false));
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 
     /**
@@ -134,6 +455,22 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------- section header ----------
+    private static String[] concat(String[] a, String[] b) {
+        String[] r = new String[a.length + b.length];
+        System.arraycopy(a, 0, r, 0, a.length); System.arraycopy(b, 0, r, a.length, b.length);
+        return r;
+    }
+
+    private static int[] concat(int[] a, int[] b) {
+        int[] r = new int[a.length + b.length];
+        System.arraycopy(a, 0, r, 0, a.length); System.arraycopy(b, 0, r, a.length, b.length);
+        return r;
+    }
+
+    private static int colNamesLen(int position) {
+        return (position == 3) ? COL_NAMES.length + RGB_NAMES.length : COL_NAMES.length;
+    }
+
     private void header(LinearLayout root, String text) {
         TextView h = new TextView(this);
         h.setText(text.toUpperCase());
@@ -144,6 +481,414 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------- level spinner row (fan/pump) ----------
+    // ---------- GPU profile while gaming ----------
+    // Only takes effect while a game is in the foreground (GameSpace sets
+    // persist.sys.power_mode_perf); vendor_init writes the MHz to the GMU DCVS tunable
+    // min_freq_mhz and resets it to -1 on exit. Values are real pwrlevels from this
+    // unit's fused GPU speed bin (qcom,gpu-pwrlevels-1, speed-bin 0xfc): 1200 is the
+    // hardware maximum. The kernel does NOT range-check this node -- it accepted 9999
+    // verbatim when tested -- so the UI only ever offers table entries.
+    // One prop carries the whole state: MHz, or -1 for Balanced (also the kernel's own
+    // reset value). No separate enable flag -- there was one, and gating the rc RESET on
+    // it left the GPU pinned at the old floor when the user picked Balanced.
+    private static final String PROP_GPU_MHZ = "persist.sys.rm.gamegpu.mhz";
+
+    private static final String[] GPU_PROFILE_NAMES =
+            {"Balanced", "Performance", "Max performance", "Ultimate (1200 MHz)"};
+    private static final int[] GPU_PROFILE_MHZ = {-1, 902, 1050, 1200};
+    private static final String[] GPU_PROFILE_DESC = {
+        "Stock behaviour. The GPU picks its own clock from 160 MHz up to 1200 MHz as the "
+            + "game demands. Coolest, longest battery life, and already fast \u2014 on this "
+            + "phone the GPU does reach full speed on its own. A light game that sits at 160 MHz "
+            + "here is not stuck: the GPU is not the bottleneck, so it has no reason to clock up.",
+        "Keeps the GPU at 902 MHz or above so it never falls into the low steps between "
+            + "frames. Small heat cost. Helps most where frame times are uneven rather than "
+            + "simply low.",
+        "Keeps the GPU at 1050 MHz or above. Noticeably warmer and thirstier. Worth trying "
+            + "in heavy 3D titles; wasted on light ones.",
+        "Pins the GPU to its 1200 MHz maximum the whole time the game is open \u2014 menus, "
+            + "loading screens and idle moments included. It never clocks down."
+    };
+    private static final String GPU_ULTIMATE_WARNING =
+        "\u26a0 Ultimate holds full clock no matter what the game is doing. The phone will "
+            + "get hot fast, the battery drains far quicker, and sustained use ages the "
+            + "battery. It also fights the skin-temperature limiter, which still cuts the GPU "
+            + "to 826 MHz once the case passes 40 \u00b0C \u2014 so on an already-warm phone "
+            + "this mostly burns power without adding speed. Meant for short benchmark runs, "
+            + "not for playing.";
+
+    private void gpuProfileRow(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "GPU profile while gaming");
+        final Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                GPU_PROFILE_NAMES));
+
+        final TextView desc = new TextView(this);
+        desc.setTextSize(12);
+        desc.setAlpha(0.7f);
+        desc.setPadding(0, 0, 0, dp(4));
+
+        final TextView warn = new TextView(this);
+        warn.setTextSize(12);
+        warn.setTextColor(Color.parseColor("#FFB4A9"));
+        warn.setText(GPU_ULTIMATE_WARNING);
+        warn.setPadding(0, 0, 0, dp(8));
+        warn.setVisibility(View.GONE);
+
+        sp.setSelection(idxOf(GPU_PROFILE_MHZ, parseInt(Prop.get(PROP_GPU_MHZ, "-1"), -1)));
+        desc.setText(GPU_PROFILE_DESC[sp.getSelectedItemPosition()]);
+        warn.setVisibility(sp.getSelectedItemPosition() == 3 ? View.VISIBLE : View.GONE);
+
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                // Writing the prop is enough: the rc trigger matches any non-empty value
+                // and re-applies immediately, so switching profile mid-game takes effect
+                // without waiting for the next game start.
+                Prop.set(PROP_GPU_MHZ, Integer.toString(GPU_PROFILE_MHZ[pos]));
+                desc.setText(GPU_PROFILE_DESC[pos]);
+                warn.setVisibility(pos == 3 ? View.VISIBLE : View.GONE);
+            }
+        });
+
+        row.addView(sp);
+        root.addView(desc);
+        root.addView(warn);
+
+        // The profile only decides WHAT the floor is -- GameSpace decides WHEN it applies.
+        // Nothing else surfaces that, so a user can pick a profile here and have it silently
+        // never engage. Say so, and name the games we can see that would need adding.
+        final TextView gs = new TextView(this);
+        gs.setTextSize(12);
+        gs.setPadding(0, 0, 0, dp(10));
+        gs.setText(gameSpaceStatus());
+        root.addView(gs);
+    }
+
+    /** Explains the GameSpace dependency, and names installed games not set to Performance. */
+    private String gameSpaceStatus() {
+        final java.util.Map<String, String> listed = new java.util.HashMap<>();
+        String raw = null;
+        try {
+            raw = Settings.System.getString(getContentResolver(), "gamespace_game_list");
+        } catch (Exception ignored) { }
+        if (raw != null && !raw.isEmpty()) {
+            for (String entry : raw.split(";")) {
+                final String[] parts = entry.split("=", 2);
+                if (parts.length == 2) listed.put(parts[0].trim(), parts[1].trim());
+            }
+        }
+        // "2" is GameListManager.PERF_MODE_VALUE -- being in the list alone is not enough,
+        // only the per-game Performance toggle triggers the boost.
+        int inPerf = 0;
+        for (String v : listed.values()) if ("2".equals(v)) inPerf++;
+
+        final java.util.List<String> missing = new java.util.ArrayList<>();
+        try {
+            final PackageManager pm = getPackageManager();
+            for (ApplicationInfo ai : pm.getInstalledApplications(0)) {
+                if (ai.category != ApplicationInfo.CATEGORY_GAME) continue;
+                if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                if (!"2".equals(listed.get(ai.packageName))) {
+                    missing.add(String.valueOf(pm.getApplicationLabel(ai)));
+                }
+            }
+        } catch (Exception ignored) { }
+
+        final StringBuilder sb = new StringBuilder();
+        if (inPerf == 0) {
+            sb.append("Not active yet. This profile only applies to games added in Game Space "
+                    + "with Performance mode switched on for that game \u2014 no game is set up "
+                    + "that way, so the GPU currently keeps its stock behaviour.");
+        } else {
+            sb.append(inPerf).append(inPerf == 1 ? " game is" : " games are")
+              .append(" set to Performance in Game Space; the profile applies to ")
+              .append(inPerf == 1 ? "it." : "those.");
+        }
+        if (!missing.isEmpty()) {
+            java.util.Collections.sort(missing);
+            sb.append("\n\nGames found on this phone that are not set up: ");
+            for (int i = 0; i < missing.size() && i < 5; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(missing.get(i));
+            }
+            if (missing.size() > 5) sb.append(" and ").append(missing.size() - 5).append(" more");
+            sb.append(". Add them in Game Space and turn on Performance mode for each.");
+        }
+        return sb.toString();
+    }
+
+    // ---------- Remote Key Provisioning ----------
+    // A device whose factory attestation keybox is lost or corrupt (a real hazard on a
+    // custom ROM) can pull a fresh key from Google's provisioning server instead. This is
+    // the same path `cmd remote_provisioning certify default` takes, minus the shell:
+    // rkpdapp only accepts binds from SYSTEM_UID or itself
+    // (RemoteProvisioningService.java:70), and this app is android.uid.system, so it can
+    // call android.security.rkp.IRemoteProvisioning directly. The AIDL lives in
+    // frameworks/base/core/java, i.e. in framework.jar, which platform_apis:true reaches.
+    //
+    // It provisions automatically once remote_provisioning.hostname is set (see
+    // product.prop); this button is for when it has not, and to show why.
+    private static final String RKP_SERVICE = "remote_provisioning";
+    private static final String RKP_IRPC = "default";
+    // Same arbitrary key id RemoteProvisioningShellCommand uses, so this exercises the
+    // identical path rather than a subtly different one.
+    private static final int RKP_KEY_ID = 452436;
+
+    private void rkpRow(LinearLayout root) {
+        final TextView status = new TextView(this);
+        status.setTextSize(12);
+        status.setAlpha(0.7f);
+        status.setPadding(0, 0, 0, dp(8));
+
+        // The switch, not a bare button: RKP has an ongoing cost (rkpdapp wakes the phone daily to
+        // top up its key pool), so it must be something the user can turn back off.
+        LinearLayout swRow = labelledRow(root, "Remote key provisioning");
+        final Switch sw = new Switch(this);
+        sw.setChecked(Rkp.isEnabled());
+        swRow.addView(sw);
+
+        LinearLayout row = labelledRow(root, "Attestation keys");
+        final Button go = new Button(this);
+        go.setText("Re-provision");
+        row.addView(go);
+        root.addView(status);
+
+        final String offText =
+                "This phone has no attestation keys of its own \u2014 KeyMint reports "
+                + "ATTESTATION_KEYS_NOT_PROVISIONED and the keybox store is empty, so apps that "
+                + "check hardware attestation fail. Turning this on lets the phone fetch signed "
+                + "keys from a provisioning server and gives it a real Google-rooted certificate "
+                + "chain. Verified working on this device.\n\n"
+                + "PRIVACY \u2014 read before turning this on. The request your phone sends is "
+                + "signed by its secure hardware and identifies the device: a permanent per-device "
+                + "ID, make and model, the security patch levels, and the fact that the bootloader "
+                + "is unlocked. Google issues the certificates, so Google can log that identifier "
+                + "against this specific handset, and can revoke it. The server used is the "
+                + "GrapheneOS proxy, which keeps your IP address from Google \u2014 but not the "
+                + "device identity, because Google still signs the keys. Afterwards, any app that "
+                + "asks for hardware attestation receives a certificate chain that points at this "
+                + "phone.\n\n"
+                + "That is the trade: apps needing hardware attestation start working, in exchange "
+                + "for a stable hardware identity that Google can see. Off by default for that "
+                + "reason.\n\n"
+                + "It does NOT make the phone look locked. The attestation is signed by the secure "
+                + "hardware and truthfully reports the unlocked bootloader, so apps that demand a "
+                + "locked device \u2014 Google Wallet tap-to-pay, strong Play Integrity, some "
+                + "banking apps \u2014 will still refuse. This only fixes \"the device has no "
+                + "attestation keys at all\"; it cannot hide that the bootloader is unlocked.\n\n"
+                + "Also costs a little battery: the system wakes about once a day to keep the key "
+                + "pool topped up. Needs internet.";
+        final String onText =
+                "On. Keys are fetched from " + "remoteprovisioning.grapheneos.org" + " when an app "
+                + "needs one. Use Re-provision only if attestation is failing \u2014 it requests a "
+                + "key now and reports what comes back.";
+
+        status.setText(Rkp.isEnabled() ? onText : offText);
+        go.setEnabled(Rkp.isEnabled());
+
+        sw.setOnCheckedChangeListener((v, on) -> {
+            Rkp.apply(getApplicationContext(), on);
+            go.setEnabled(on);
+            bumpRev();
+            if (!on) {
+                status.setText(offText);
+                toast("Remote key provisioning off");
+                return;
+            }
+            // Don't just claim it is on -- go and find out. init has to pick up the property and
+            // rkpdapp has to restart before a request can succeed, hence the delay.
+            status.setText("Turning on\u2026 asking the provisioning server for a key. "
+                    + "This needs internet and takes a few seconds.");
+            new android.os.Handler(android.os.Looper.getMainLooper())
+                    .postDelayed(() -> rkpCertify(status, go), 2500);
+        });
+
+        go.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                go.setEnabled(false);
+                status.setText("Requesting a key\u2026");
+                rkpCertify(status, go);
+            }
+        });
+    }
+
+    private void rkpCertify(final TextView status, final Button go) {
+        try {
+            IRemoteProvisioning rp = IRemoteProvisioning.Stub.asInterface(
+                    ServiceManager.getService(RKP_SERVICE));
+            if (rp == null) {
+                rkpDone(status, go, "The remote_provisioning service is not running.");
+                return;
+            }
+            rp.getRegistration(RKP_IRPC, new IGetRegistrationCallback.Stub() {
+                public void onSuccess(IRegistration reg) {
+                    try {
+                        reg.getKey(RKP_KEY_ID, new IGetKeyCallback.Stub() {
+                            public void onSuccess(RemotelyProvisionedKey key) {
+                                int n = (key == null || key.encodedCertChain == null)
+                                        ? 0 : key.encodedCertChain.length;
+                                rkpDone(status, go, n > 0
+                                        ? "Working. The phone was issued an attestation key and "
+                                          + "received a " + n + "-byte certificate chain, so "
+                                          + "hardware attestation is now available to apps."
+                                        : "The server answered but returned no certificate chain "
+                                          + "\u2014 press Re-provision to try again.");
+                            }
+                            public void onCancel() { rkpDone(status, go, "Cancelled."); }
+                            public void onError(byte error, String description) {
+                                rkpDone(status, go, rkpExplain(error, description));
+                            }
+                        });
+                    } catch (Exception e) {
+                        rkpDone(status, go, "Failed: " + e);
+                    }
+                }
+                public void onCancel() { rkpDone(status, go, "Cancelled."); }
+                public void onError(String error) { rkpDone(status, go, "Failed: " + error); }
+            });
+        } catch (Exception e) {
+            rkpDone(status, go, "Failed: " + e);
+        }
+    }
+
+    /**
+     * Turn an IGetKeyCallback.ErrorCode into something a user can act on.
+     *
+     * The codes are from frameworks/base IGetKeyCallback.aidl. ERROR_PERMANENT (4) is the one that
+     * matters most here: it means the manufacturer never registered this handset with the RKP
+     * backend (or it was revoked), so no amount of retrying will help. That distinction is the
+     * whole point of showing a status -- we verified one NX809J whose keys ARE enrolled, but we
+     * cannot know that every unit is, and a user needs to be told which case they are in rather
+     * than left with a switch that silently does nothing.
+     */
+    private static String rkpExplain(byte error, String description) {
+        switch (error) {
+            case 4: // ERROR_PERMANENT
+                return "This phone cannot get attestation keys. Its maker never registered it "
+                        + "with the provisioning backend (or the keys were revoked), so this will "
+                        + "never work on this handset \u2014 nothing in the ROM can change that. "
+                        + "Turn the switch back off so it stops retrying daily.\n\n(" + description + ")";
+            case 3: // ERROR_PENDING_INTERNET_CONNECTIVITY
+                return "No internet reachable. The key pool is empty and the provisioning server "
+                        + "could not be contacted \u2014 connect to WiFi or mobile data and press "
+                        + "Re-provision again.";
+            case 2: // ERROR_REQUIRES_SECURITY_PATCH
+                return "Refused: the provisioning server considers this build's security patch "
+                        + "level too old to issue keys. A newer build is needed.";
+            default: // ERROR_UNKNOWN
+                return "Failed: " + description + "\n\nThis one is not a known permanent failure "
+                        + "\u2014 press Re-provision to try again.";
+        }
+    }
+
+    // The AIDL is oneway, so every callback lands on a binder thread.
+    private void rkpDone(final TextView status, final Button go, final String msg) {
+        runOnUiThread(new Runnable() {
+            public void run() { status.setText(msg); go.setEnabled(true); }
+        });
+    }
+
+    /**
+     * Cooling fan: Off / Auto / 1..5 in ONE control.
+     *
+     * "Auto" used to be a separate switch sitting next to a fixed-speed dropdown, which is two
+     * controls for one decision and let the user set both (the switch silently won, because
+     * hwcontrol overwrites persist.sys.fan.level from the temperature curve). Folding Auto in as
+     * a level makes the exclusivity obvious and unrepresentable-if-wrong.
+     *
+     * Auto is not a value the hardware understands: persist.sys.rm.fan_auto=1 makes hwcontrol
+     * write persist.sys.fan.level itself, and the `on property:persist.sys.fan.level=N` triggers
+     * in redmagic_hw_arm.rc do the actual /sys/kernel/fan write either way.
+     */
+    private void fanLevelRow(LinearLayout root, String title) {
+        final String levelKey = "persist.sys.fan.level";
+        final String autoKey  = "persist.sys.rm.fan_auto";
+        final String[] names  = {"Off", "Auto", "1", "2", "3", "4", "5"};
+
+        LinearLayout row = labelledRow(root, title);
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        final int lvl = clamp(parseInt(Prop.get(levelKey, "0"), 0), 0, 5);
+        sp.setSelection(Prop.getBool(autoKey, true) ? 1 : (lvl == 0 ? 0 : lvl + 1));
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                if (pos == 1) {
+                    Prop.set(autoKey, "1");          // hwcontrol takes over the level
+                } else {
+                    Prop.set(autoKey, "0");
+                    Prop.set(levelKey, Integer.toString(pos == 0 ? 0 : pos - 1));
+                }
+                bumpRev();
+            }
+        });
+        row.addView(sp);
+    }
+
+    /**
+     * Fan speed while fast charging: Off / Auto / 1..5.
+     *
+     * "Auto" is stored as the literal string "auto" rather than a number, because there is no fan
+     * level that means "follow the curve". ChargeCooling turns that into chargecool.active=2,
+     * which redmagic_hw_arm.rc handles by raising the fan rail and the pump but NOT pinning
+     * fan_speed_level -- so hwcontrol's temperature curve keeps driving it, exactly as it does
+     * when not charging. active=1 remains the fixed-speed case.
+     */
+    private void chargeFanLevelRow(LinearLayout root, String title) {
+        final String[] names = {"Off", "Auto", "1", "2", "3", "4", "5"};
+        LinearLayout row = labelledRow(root, title);
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        final String cur = Prop.get(ChargeCooling.PROP_FAN_LEVEL, ChargeCooling.FAN_AUTO).trim();
+        if (ChargeCooling.FAN_AUTO.equals(cur)) {
+            sp.setSelection(1);
+        } else {
+            final int n = clamp(parseInt(cur, 0), 0, 5);
+            sp.setSelection(n == 0 ? 0 : n + 1);
+        }
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(ChargeCooling.PROP_FAN_LEVEL,
+                        pos == 1 ? ChargeCooling.FAN_AUTO
+                                 : Integer.toString(pos == 0 ? 0 : pos - 1));
+                // Re-publish now: the mode (fixed vs auto) changes which active value we request,
+                // and battery broadcasts can be ~90 s apart.
+                ChargeCooling.reevaluate(getApplicationContext());
+                bumpRev();
+            }
+        });
+        row.addView(sp);
+    }
+
+    /**
+     * Fan speed while gaming: Off / Auto / 1..5, stored the same way as the charging row.
+     *
+     * gameperfd is the single owner of game-mode cooling (redmagic_hw_arm.rc no longer writes
+     * fan/pump for game mode), so this value is read there: "auto" leaves the temperature curve
+     * running, a number pins that level, and "Cool while gaming" off means it touches neither.
+     */
+    private void gameFanLevelRow(LinearLayout root, String title) {
+        final String key = "persist.sys.rm.gamecool.fan";
+        final String[] names = {"Off", "Auto", "1", "2", "3", "4", "5"};
+        LinearLayout row = labelledRow(root, title);
+        Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        final String cur = Prop.get(key, ChargeCooling.FAN_AUTO).trim();
+        if (ChargeCooling.FAN_AUTO.equals(cur)) {
+            sp.setSelection(1);
+        } else {
+            final int n = clamp(parseInt(cur, 0), 0, 5);
+            sp.setSelection(n == 0 ? 0 : n + 1);
+        }
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(key, pos == 1 ? ChargeCooling.FAN_AUTO
+                                       : Integer.toString(pos == 0 ? 0 : pos - 1));
+                bumpRev();
+            }
+        });
+        row.addView(sp);
+    }
+
     private void levelRow(LinearLayout root, String title, final String key, String[] names, boolean bumpRev) {
         LinearLayout row = labelledRow(root, title);
         Spinner sp = new Spinner(this);
@@ -172,20 +917,24 @@ public class SettingsActivity extends Activity {
         String v = Prop.get(key, "").trim();
         if (v.startsWith("0x") && v.length() == 9) {
             fxIdx  = idxOf(FX_VALS, parseInt(v.substring(3, 6), 0));
-            colIdx = clamp(parseInt(v.substring(6, 9), 1) - 1, 0, COL_NAMES.length - 1);
+            colIdx = clamp(idxOf((position == 3) ? concat(COL_VALS, RGB_VALS) : COL_VALS,
+                                 parseInt(v.substring(6, 9), 1)), 0, colNamesLen(position) - 1);
         }
 
         final Spinner fx = new Spinner(this);
         fx.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, FX_NAMES));
         fx.setSelection(fxIdx);
+        final boolean hasRgb = (position == 3);        // RGB presets ship for the fan ring only
+        final String[] colNames = hasRgb ? concat(COL_NAMES, RGB_NAMES) : COL_NAMES;
+        final int[]    colVals  = hasRgb ? concat(COL_VALS,  RGB_VALS)  : COL_VALS;
         final Spinner col = new Spinner(this);
-        col.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, COL_NAMES));
+        col.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, colNames));
         col.setSelection(colIdx);
 
         SimpleSel apply = new SimpleSel() {
             public void onItemSelected(AdapterView<?> p, View v2, int pos, long id) {
                 int fxVal = FX_VALS[fx.getSelectedItemPosition()];
-                int colVal = col.getSelectedItemPosition() + 1;
+                int colVal = colVals[col.getSelectedItemPosition()];
                 Prop.set(key, String.format("0x%d%03d%03d", position, fxVal, colVal));
                 bumpRev();
             }
@@ -249,7 +998,7 @@ public class SettingsActivity extends Activity {
             // Fall back to a bare list rather than losing the whole panel.
         }
 
-        LinearLayout appRow = labelledRow(root, "App to launch");
+        final LinearLayout appRow = labelledRow(root, "App to launch");
         final Spinner app = new Spinner(this);
         app.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
                 labels.isEmpty() ? new String[]{"(no apps found)"} : labels.toArray(new String[0])));
@@ -259,9 +1008,16 @@ public class SettingsActivity extends Activity {
         // "App to launch" text.
         appRow.addView(app, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
+        // "App to launch" only means anything for the two modes that launch an app; showing it
+        // under "Do nothing"/"Flashlight"/"Key code" invites the user to set a value that is then
+        // silently ignored. Hidden rather than dimmed so the panel stays short.
+        appRow.setVisibility(usesApp(modeVals[mode.getSelectedItemPosition()])
+                ? View.VISIBLE : View.GONE);
+
         mode.setOnItemSelectedListener(new SimpleSel() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                 Prop.set(SliderWatcher.PROP_MODE, String.valueOf(modeVals[pos]));
+                appRow.setVisibility(usesApp(modeVals[pos]) ? View.VISIBLE : View.GONE);
             }
         });
         app.setOnItemSelectedListener(new SimpleSel() {
@@ -318,26 +1074,49 @@ public class SettingsActivity extends Activity {
     // build and immune to every Doze setting above it in this screen.
     private void batteryStatsRow(LinearLayout root) {
         final String key = "persist.sys.rm.batteryjob_hours";
-        final String[] names = {"Hourly (stock)", "Every 2 hours", "Every 4 hours",
-                                "Every 6 hours", "Every 12 hours", "Off"};
-        final String[] vals = {"1", "2", "4", "6", "12", "0"};
+        // Default 6h, not stock hourly: this alarm is the single largest idle waker and Doze is
+        // not permitted to defer it, so leaving it hourly undoes most of what the switch above buys.
+        final String[] names = {"Every 6 hours (default)", "Every hour (stock)", "Off"};
+        final String[] vals  = {"6", "1", "0"};
+        final String[] why = {
+            "Recommended. The battery chart fills in four times a day instead of twenty-four, "
+                + "and the phone stops waking on the hour to do it. On a night on the desk that is "
+                + "about eight fewer wake-ups.",
+            "Android's stock behaviour. The battery usage chart is accurate to the hour, at the "
+                + "cost of one guaranteed wake-up every hour, all night, that Doze cannot defer.",
+            "No alarm is scheduled at all. Nothing wakes the phone for the chart — but the chart "
+                + "stops accumulating new history, so Battery usage will show gaps."
+        };
 
-        LinearLayout row = labelledRow(root, "Battery stats refresh");
+        mBatteryStatsBox = new LinearLayout(this);
+        mBatteryStatsBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(mBatteryStatsBox);
+        LinearLayout row = labelledRow(mBatteryStatsBox, "Battery stats refresh");
+        final TextView expl = new TextView(this);
         Spinner sp = new Spinner(this);
         sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
-        sp.setSelection(idxOfValue(vals, Prop.get(key, "1")));
+        sp.setSelection(idxOfValue(vals, Prop.get(key, "6")));
         sp.setOnItemSelectedListener(new SimpleSel() {
             @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                 Prop.set(key, vals[pos]);
+                expl.setText(why[pos]);
             }
         });
         row.addView(sp);
 
-        note(root, "Settings wakes the phone every hour, on the hour, just to refresh the battery "
-                + "usage chart. It is exempt from Doze, so the settings above cannot defer it — on "
-                + "a night on the desk that is around nine wake-ups on its own.\n\n"
-                + "Lowering this is safe; the only effect is that the battery chart updates less "
-                + "often. \"Off\" stops the chart accumulating new history.");
+        expl.setTextSize(13);
+        expl.setPadding(0, dp(4), 0, dp(10));
+        expl.setText(why[idxOfValue(vals, Prop.get(key, "6"))]);
+        mBatteryStatsBox.addView(expl);
+
+        note(mBatteryStatsBox, "Settings wakes the phone every hour, on the hour, purely to refresh the battery "
+                + "usage chart. It is scheduled with an alarm Doze is not allowed to defer, so the "
+                + "settings above cannot touch it — measured on a real dump as 166 of 178 wake-ups.");
+
+        // Hidden until the switch above is on; it only matters once you care about idle drain.
+        final boolean dozeOn = Prop.getBool(OfflineDoze.KEY_ENABLED, OfflineDoze.DEF_ENABLED);
+        android.util.Log.d("RmControl", "batteryStatsRow: doze_offline=" + dozeOn);
+        setBatteryStatsVisible(dozeOn);
     }
 
     private static int idxOfValue(String[] vals, String v) {
@@ -383,6 +1162,11 @@ public class SettingsActivity extends Activity {
     }
 
     // ---------- reusable ----------
+    /** The slider modes that actually consume {@link SliderWatcher#PROP_APP}. */
+    private static boolean usesApp(int mode) {
+        return mode == SliderWatcher.MODE_LAUNCH || mode == SliderWatcher.MODE_LAUNCH_HOME;
+    }
+
     private LinearLayout labelledRow(LinearLayout root, String title) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -394,6 +1178,18 @@ public class SettingsActivity extends Activity {
         return row;
     }
 
+    private void chargeCoolSwitch(LinearLayout root, String title) {
+        LinearLayout row = labelledRow(root, title);
+        Switch sw = new Switch(this);
+        sw.setChecked(Prop.getBool(ChargeCooling.PROP_ENABLED, true));
+        sw.setOnCheckedChangeListener((v, on) -> {
+            Prop.set(ChargeCooling.PROP_ENABLED, on ? "1" : "0");
+            ChargeCooling.reevaluate(getApplicationContext());
+            bumpRev();
+        });
+        row.addView(sw);
+    }
+
     private void rmSwitch(LinearLayout root, String title, final String key, boolean def) {
         LinearLayout row = labelledRow(root, title);
         Switch sw = new Switch(this);
@@ -403,9 +1199,13 @@ public class SettingsActivity extends Activity {
     }
 
     private void addSwitch(LinearLayout root, String title, final String key) {
+        addSwitch(root, title, key, false);
+    }
+
+    private void addSwitch(LinearLayout root, String title, final String key, boolean def) {
         LinearLayout row = labelledRow(root, title);
         Switch sw = new Switch(this);
-        sw.setChecked(Prop.getBool(key, false));
+        sw.setChecked(Prop.getBool(key, def));
         sw.setOnCheckedChangeListener((v, on) -> Prop.set(key, on ? "1" : "0"));
         row.addView(sw);
     }
@@ -414,7 +1214,7 @@ public class SettingsActivity extends Activity {
         final String key = "persist.sys.loudness_gain_mb";
         final TextView label = new TextView(this);
         label.setTextSize(13);
-        int cur = parseInt(Prop.get(key, "800"), 800);
+        int cur = parseInt(Prop.get(key, "1000"), 1000);
         label.setText(getString(R.string.loudness_gain) + ": +" + (cur / 100) + " dB");
         root.addView(label);
         SeekBar bar = new SeekBar(this);
@@ -437,6 +1237,9 @@ public class SettingsActivity extends Activity {
     private void bumpRev() { Prop.set("sys.rm.settings_rev", Long.toString(System.currentTimeMillis())); }
 
     // ---------- offline doze ----------
+    /** Container revealed only once "Sleep harder when offline" is on. */
+    private LinearLayout mBatteryStatsBox;
+
     private void dozeOffline(LinearLayout root) {
         LinearLayout row = labelledRow(root, "Sleep harder when offline");
         Switch sw = new Switch(this);
@@ -444,8 +1247,19 @@ public class SettingsActivity extends Activity {
         sw.setOnCheckedChangeListener((v, on) -> {
             Prop.set(OfflineDoze.KEY_ENABLED, on ? "1" : "0");
             OfflineDoze.reapply(this);
+            setBatteryStatsVisible(on);
         });
         row.addView(sw);
+    }
+
+    private void setBatteryStatsVisible(boolean visible) {
+        // One container, not a list of loose children: hiding several siblings individually
+        // left the row on screen on-device even though the compiled call passed false
+        // (verified in smali). A single parent with its own visibility is unambiguous, and
+        // it correctly takes the explanatory note with it.
+        if (mBatteryStatsBox != null) {
+            mBatteryStatsBox.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
     }
 
     /** Duration picker in minutes; writes the value (not the index) so the prop reads plainly. */

@@ -1,0 +1,9 @@
+// Init property bridge for the RKP toggle. Installs to /system_ext/etc/init so the actions run
+// in the `init` domain, which system/sepolicy/private/property.te permits to set remote_prov_prop
+// (the app's own domain, system_app, is neverallowed from doing so).
+prebuilt_etc {
+    name: "rkp.rc",
+    src: "rkp.rc",
+    sub_dir: "init",
+    system_ext_specific: true,
+}

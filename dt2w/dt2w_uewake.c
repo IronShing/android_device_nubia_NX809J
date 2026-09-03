@@ -57,6 +57,10 @@
 // the 0->1 transition re-fires the init trigger on every request.
 static const char *ARM_PROP = "sys.dt2w.arm";
 
+// Input port for this uinput device. MUST match the <port input="..."> entry in
+// /vendor/etc/input-port-associations.xml (baked by sign_a17_release.sh).
+#define DT2W_INPUT_PORT "dt2w_uewake"
+
 static void arm_gesture(const char *why) {
     // Pulse low then high so the init property trigger re-fires each time, even
     // if it was already "1" from a previous request.
@@ -81,9 +85,21 @@ static int uinput_setup_wake(void) {
     uud.id.vendor = 0x6770;   // 'gp'
     uud.id.product = 0x0001;
     uud.id.version = 1;
+    // Give the node a physical location ("input port"). Without one the framework reports
+    // AssociatedDisplayPort:<none> for this device, and the KEY_WAKEUP it emits is DROPPED
+    // whenever a second display is attached: verified 2026-08-31 with an external monitor, the
+    // driver fired (tpd_ufp_info: double_tap=true) and this daemon injected, but PowerManager
+    // never ran and the device stayed Asleep. Unplug the monitor and the identical injection
+    // wakes it. /vendor/etc/input-port-associations.xml maps this port to the internal display
+    // (port 147) so the wake always resolves to the built-in panel.
+    if (ioctl(fd, UI_SET_PHYS, DT2W_INPUT_PORT) < 0) {
+        // Not fatal: single-display wake still works, we just lose the multi-display fix.
+        ALOGW("UI_SET_PHYS(%s): %s -- DT2W will not wake while an external display is attached",
+              DT2W_INPUT_PORT, strerror(errno));
+    }
     if (write(fd, &uud, sizeof(uud)) < 0) { ALOGE("uinput dev write: %s", strerror(errno)); close(fd); return -1; }
     if (ioctl(fd, UI_DEV_CREATE) < 0) { ALOGE("UI_DEV_CREATE: %s", strerror(errno)); close(fd); return -1; }
-    ALOGI("uinput dt2w_uewake created (KEY_WAKEUP)");
+    ALOGI("uinput dt2w_uewake created (KEY_WAKEUP, phys=%s)", DT2W_INPUT_PORT);
     return fd;
 }
 

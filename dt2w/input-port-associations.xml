@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pin the DT2W uinput device to the BUILT-IN panel.
+
+     Without this, dt2w_uewake has AssociatedDisplayPort:<none> and the KEY_WAKEUP it injects is
+     silently dropped whenever a second display is attached. Verified on hardware 2026-08-31 with
+     an external monitor: the touch driver fired (tpd_ufp_info: double_tap=true) and the daemon
+     injected, but PowerManagerService never ran and the device stayed Asleep. Unplug the monitor
+     and the same injection wakes it. An `input keyevent KEYCODE_WAKEUP` (which carries a valid
+     display id) woke it even WITH the monitor attached, which is what pinned the cause to the
+     missing display association rather than to DT2W itself.
+
+     display="147" is the internal panel's physicalPort (dumpsys display, type=INTERNAL).
+     input="dt2w_uewake" must match DT2W_INPUT_PORT / UI_SET_PHYS in dt2w_uewake.c.
+
+     Read from /vendor/etc/ (Environment.getVendorDirectory()), so it is baked into the vendor
+     image by sign_a17_release.sh rather than installed by device.mk. -->
+<ports>
+    <port display="147" input="dt2w_uewake"/>
+</ports>

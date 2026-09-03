@@ -1,0 +1,66 @@
+// microG prebuilts. Official builds from github.com/microg/GmsCore, all three signed with
+// microG's key (SHA-256 9bd06727e62796c0130eb6dab39b73157451582cbd138e86c468acc395d14165).
+//
+// These MUST keep their upstream package names and signature: ComputerEngine.isMicrogSigned()
+// allowlists com.google.android.gms / com.android.vending, and generateFakeSignature() then lets
+// them present Google's signature via their own "fake-signature" meta-data. Re-signing them with
+// the platform key, or renaming the packages, breaks that and microG stops working.
+//
+// NOTE the "-hw" assets upstream are the HUAWEI flavor (versionNameSuffix "-hw"), not "hardware".
+// Use the default flavor, which is what these are.
+
+android_app_import {
+    name: "MicroGGmsCore",
+    apk: "prebuilt/MicroGGmsCore.apk",
+    presigned: true,
+    privileged: true,
+    product_specific: true,
+    // MUST stay off. dexpreopt uncompresses the dex inside the APK, which rewrites the zip and
+    // invalidates the APK Signature Scheme v2 block. Android then sees CERT.SF claiming v2 with
+    // no v2 block present, treats it as tampered ("Signature stripped?") and refuses to install
+    // it -- microG never appears on the device. Verified 2026-08-31 by apksigner on the built
+    // image: DOES NOT VERIFY. Costs some first-run JIT time; correctness wins.
+    // preprocessed:true is the property that actually matters: it tells Soong the APK is final
+    // and must not be rewritten. Without it the build uncompresses the dex entries (source zip
+    // compress_type 8 -> installed 0), which rebuilds the zip and invalidates the APK Signature
+    // Scheme v2 block. Android then sees CERT.SF advertising v2 with no v2 block and rejects the
+    // APK as tampered ("Signature stripped?"), so microG never installs. dex_preopt alone does
+    // NOT prevent this -- verified on the built image 2026-08-31.
+    preprocessed: true,
+    // These validations enforce Google's GMS partner requirements (uncompressed dex AND
+    // uncompressed JNI libs so both can be mmapped from the APK). microG is not GMS and ships
+    // neither, and satisfying them would mean rewriting the APK, which breaks its signature.
+    // Skipping them leaves the APK exactly as upstream published it; the JNI libs are simply
+    // extracted at install time as they would be for any ordinary app.
+    skip_preprocessed_apk_checks: true,
+    dex_preopt: { enabled: false },
+    required: ["privapp-permissions-microg.xml"],
+}
+
+android_app_import {
+    name: "MicroGCompanion",
+    apk: "prebuilt/MicroGCompanion.apk",
+    presigned: true,
+    privileged: true,
+    product_specific: true,
+    preprocessed: true,               // see MicroGGmsCore: rewriting the zip strips the v2 signature
+    // No skip_preprocessed_apk_checks here: this APK has no compressed JNI libs, and the checker
+    // errors out if the property is set on a module that does not need it.
+    dex_preopt: { enabled: false },
+}
+
+android_app_import {
+    name: "MicroGGsfProxy",
+    apk: "prebuilt/MicroGGsfProxy.apk",
+    presigned: true,
+    product_specific: true,
+    preprocessed: true,               // v1-only today, but keep it consistent and safe
+    dex_preopt: { enabled: false },
+}
+
+prebuilt_etc {
+    name: "privapp-permissions-microg.xml",
+    src: "privapp-permissions-microg.xml",
+    sub_dir: "permissions",
+    product_specific: true,
+}

@@ -1,0 +1,27 @@
+# Remote Key Provisioning (RKP) — property bridge.
+#
+# The RedMagic Control toggle writes persist.sys.rm.rkp; init does the actual setprops here.
+# It cannot be done from the app: system/sepolicy/private/property.te neverallows every domain
+# except init/keystore/shell/system_server/rkpdapp/vendor_init from setting remote_prov_prop, and
+# that is a build-time check, not a runtime denial. init is on the permitted list.
+#
+# These are NOT persist.* properties, so they vanish on reboot. persist.sys.rm.rkp does persist,
+# and init re-fires this action when it is loaded at boot, so the setting survives.
+#
+# Deliberately absent: remote_provisioning.enable_rkpd. It has no exact SELinux context and falls
+# back to default_prop. Verified on hardware 2026-09-01 that RKP provisions a full Google-rooted
+# chain without it -- the real gate is the device_config flag, which the app sets.
+#
+# rkpdapp caches the hostname at process start, so the app restarts it after toggling; without
+# that it keeps reporting "no default URL" no matter what these properties say.
+
+on property:persist.sys.rm.rkp=1
+    setprop remote_provisioning.hostname remoteprovisioning.grapheneos.org
+    setprop remote_provisioning.connect_timeout_millis 20000
+    setprop remote_provisioning.strongbox.rkp_only true
+    setprop remote_provisioning.tee.rkp_only true
+
+on property:persist.sys.rm.rkp=0
+    setprop remote_provisioning.hostname ""
+    setprop remote_provisioning.strongbox.rkp_only false
+    setprop remote_provisioning.tee.rkp_only false

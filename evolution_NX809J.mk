@@ -19,30 +19,69 @@ $(call inherit-product, device/nubia/NX809J/device.mk)
 #   false = full Pixel GApps
 # ── GApps variant ─────────────────────────────────────────────────────────────
 # We ship BOTH variants; select per build with the NX809J_MINIMAL env/var:
-#   NX809J_MINIMAL=true  (default) → de-Googled MINIMAL: AOSP apps + Trebuchet,
-#        ONLY Play Store + GMS Core (Play Integrity). WITH_GMS:=false stops
-#        common_full_phone from adding a Google-app tier; gms_core.mk adds the core.
-#   NX809J_MINIMAL=false           → FULL Pixel GApps (gms_full) incl. Google Dialer.
+# NAMING TRAP: neither variant is de-Googled. BOTH ship Play Store + GMS Core + GSF.
+#   NX809J_MINIMAL=true  (default) → MinimalGApps: AOSP apps + Trebuchet, plus ONLY
+#        Play Store + GMS Core + GSF (enough for Play Integrity). WITH_GMS:=false below
+#        stops common_full_phone adding the Google-app TIER -- it does NOT mean "no
+#        Google"; gms_core.mk adds the core back.
+#   NX809J_MINIMAL=false           → FullGApps: full Pixel GApps (gms_full) incl. Google
+#        Dialer.
+# The old wording here said "de-Googled", which is wrong and has already misled a reader
+# into concluding a flashed build had no GApps when it had all three packages.
 NX809J_MINIMAL ?= true
 
+# ── microG variant (third option, takes precedence over NX809J_MINIMAL) ───────
+# NX809J_MICROG=true → de-Googled base + microG (Services + Companion + GsfProxy) and NO GApps.
+# Kept as a separate flag rather than a third value of NX809J_MINIMAL so the existing two
+# variants and their build scripts are untouched.
+NX809J_MICROG ?= false
+ifeq ($(NX809J_MICROG),true)
+WITH_GMS := false
+TARGET_USES_MINI_GAPPS := false
+EVO_VERSION_SUFFIX := microG
+endif
+
+ifeq ($(NX809J_MICROG),false)
 ifeq ($(NX809J_MINIMAL),true)
-# de-Googled: no Google-app tier from the base
+# Suppress only the Google-app TIER from the base. This is NOT "de-Googled" -- gms_core.mk
+# below adds Play Store + GMS Core + GSF.
 WITH_GMS := false
 TARGET_USES_MINI_GAPPS := false
 # Say what this build actually is. WITH_GMS=false above only suppresses the Google-app TIER;
 # gms_core.mk below still adds Play Store + GMS Core + GSF, so the upstream default of "-Vanilla"
 # (which means no Google at all) would be actively misleading to anyone choosing a build by name.
+# NOTE: this only works because vendor/lineage/config/version.mk was patched to read
+# EVO_VERSION_SUFFIX. Upstream ignores it, and builds up to 20260827 shipped as
+# "12.1-Vanilla" despite carrying GApps. If vendor/lineage is ever re-synced clean, check
+# ro.modversion on the result before publishing.
 EVO_VERSION_SUFFIX := MinimalGApps
 else
 # full Pixel GApps tier
 TARGET_USES_MINI_GAPPS := false
 EVO_VERSION_SUFFIX := FullGApps
 endif
+endif
 
 # Inherit common LineageOS configuration (brings the AOSP app suite + Trebuchet)
 $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
 
-ifeq ($(NX809J_MINIMAL),true)
+ifeq ($(NX809J_MICROG),true)
+# microG replaces GmsCore/GSF/Play Store entirely.
+$(call inherit-product, device/nubia/NX809J/microg.mk)
+PRODUCT_PACKAGES += \
+    Launcher3QuickStep \
+    webview \
+    Contacts \
+    messaging \
+    Etar \
+    Jelly \
+    DeskClock \
+    Gallery2 \
+    LatinIME \
+    Dialer
+endif
+
+ifeq ($(NX809J_MINIMAL)$(NX809J_MICROG),truefalse)
 # Core GApps only (Play Store + GMS Core + GSF) — everything else stays AOSP.
 $(call inherit-product, device/nubia/NX809J/gms_core.mk)
 # Guarantee the AOSP replacements are present (idempotent if the base already adds them).
@@ -57,6 +96,11 @@ PRODUCT_PACKAGES += \
     Gallery2 \
     LatinIME
 endif
+
+# Android Auto for every variant: Google-signed AA 17.4 priv-app cluster (overrides the
+# vendor/gms stub that gms_full.mk lists) + role holder + allowlist. Minimal and microG have
+# nothing else providing it; Full only had the stub, which Play region-blocks for some accounts.
+$(call inherit-product, device/nubia/NX809J/android_auto.mk)
 
 # Device identifiers
 PRODUCT_NAME := evolution_NX809J
@@ -84,7 +128,7 @@ PRODUCT_PACKAGES := $(filter-out Aperture ApertureLensLauncher CalculatorGoogleP
 PRODUCT_PACKAGES += \
     ExactCalculator
 
-ifeq ($(NX809J_MINIMAL),true)
+ifeq ($(NX809J_MINIMAL)$(NX809J_MICROG),truefalse)
 # de-Googled MINIMAL only: swap Google Dialer for the LineageOS Dialer (auto call recording).
 PRODUCT_PACKAGES := $(filter-out GoogleDialer bcr, $(PRODUCT_PACKAGES))
 PRODUCT_PACKAGES += \

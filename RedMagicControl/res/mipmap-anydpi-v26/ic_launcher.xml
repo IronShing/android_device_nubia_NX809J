@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Proper adaptive icon. Previously the manifest pointed android:icon straight at the bare
+     ic_rmcontrol vector, so the launcher treated it as a legacy icon: shrunk onto a
+     system-generated light badge. monochrome makes it work with themed icons too. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_rmcontrol_bg" />
+    <foreground android:drawable="@drawable/ic_rmcontrol_fg" />
+    <monochrome android:drawable="@drawable/ic_rmcontrol_fg" />
+</adaptive-icon>

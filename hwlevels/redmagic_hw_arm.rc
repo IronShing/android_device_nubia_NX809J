@@ -78,15 +78,184 @@ on property:sys.rm.haptic_test=*
     write /sys/class/leds/zte_vibrator/duration ${persist.sys.rm.haptic_ms}
     write /sys/class/leds/zte_vibrator/activate 1
 
-# ---- RGB lighting (app writes the final 0x[pos][eff][color] value per zone) ----
-# NOTE: aw22xxx lighting is firmware-config driven; effect+cfg wiring is present
-# but the correct fw sequence is still being worked out (see memory). EXPERIMENTAL.
+# ---- RGB lighting (app writes the final 0x[ZONE]00[MODE]00[COLOR] per zone) ----
+# LED needs the fan power rail. SOLVED 2026-08-27, verified on hardware: the aw22xxx
+# driver accepts effect+cfg and reports full success (fwname resolved, cfg loaded, cfg
+# update complete, run_state set) while lighting NOTHING, unless
+# /sys/kernel/fan/fan_enable is 1 first. That is why this looked "wired but dead" for so
+# long -- there is no error anywhere to find. Documented in the r/RedMagic hardware
+# guide: "The fan power rail must be enabled before LED commands will work. The fan
+# motor doesn't need to be spinning -- just the enable signal."
+# We raise the rail only; fan_speed_level is untouched, so the fan does NOT spin.
 on property:persist.sys.rm.led.logo=*
+    write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.logo}
     write /sys/class/leds/aw22xxx_led/cfg 1
 on property:persist.sys.rm.led.shoulder=*
+    write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.shoulder}
     write /sys/class/leds/aw22xxx_led/cfg 1
 on property:persist.sys.rm.led.fan=*
+    write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan}
     write /sys/class/leds/aw22xxx_led/cfg 1
+
+# ---- Fan-ring RGB follows the auto fan ----
+# hwcontrol publishes fan_rgb.active while the automatic fan is actually spinning, plus
+# fan_rgb.value = the user's own fan-ring colour/effect (or steady red if that zone is off).
+# It deliberately never writes persist.sys.rm.led.fan, so releasing just replays the user's
+# own value -- same shape as chargecool.active above, and there is no saved state to drift.
+on property:persist.sys.rm.fan_rgb.active=1
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.fan_rgb.value:-0x3002001}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+
+on property:persist.sys.rm.fan_rgb.active=0
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan:-0}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+
+# ---- Game mode cooling (baked in — NOT a module) ----
+# GameSpace already sets persist.sys.power_mode_perf when a listed game is in the
+# foreground; nothing in the stripped RedMagic product ever consumed it. gameperfd
+# had to ship as a KSU module because the CPU perf-lock needs libqti-perfd-client
+# from /vendor, which a system_ext binary cannot reach. Fan and pump need none of
+# that: vendor_init already owns these nodes, so the cooling half bakes in cleanly.
+#
+# We write the HARDWARE here and deliberately leave persist.sys.fan.level /
+# persist.sys.cooling.level untouched, so "restore on game exit" is just replaying
+# the user's own values -- no saved-state prop to get out of sync.
+# OWNERSHIP (2026-08-29): gameperfd owns game-mode cooling; there are deliberately no
+# fan/pump writes here any more. It used to be both, which only became a real conflict when
+# gameperfd started running for the first time (its .rc and SELinux domain were missing until
+# now): gameperfd forces persist.sys.fan.level while this block wrote gamecool.fan straight to
+# the hardware, so whichever fired last won. Worse, the old power_mode_perf=0 restore dropped
+# the fan the instant the game exited, fighting gameperfd's post-game cooling hold.
+# gameperfd sets persist.sys.fan.level / persist.sys.cooling.level instead, and the
+# `on property:persist.sys.{fan,cooling}.level=N` triggers above do the hardware write -- one
+# owner, and "Fan speed while gaming = Auto" becomes expressible (it just leaves fan_auto on,
+# which no `write` of a fixed level could express).
+
+# level 0 means "off", which needs fan_enable cleared too -- the restore above
+# cannot branch, so this second trigger handles that one case.
+on property:persist.sys.power_mode_perf=0 && property:persist.sys.fan.level=0
+    write /sys/kernel/fan/fan_enable 0
+
+# ---- Game mode GPU floor (baked in — NOT a module) ----
+# Adreno 840 DCVS on SM8850 lives entirely in the GMU. There is no /sys/class/devfreq
+# entry for the GPU and no governor to retune -- which is why the earlier hunt for a
+# control surface came up empty. The floor control is the GMU DCVS tunable
+#   /sys/class/kgsl/kgsl-3d0/gmu/dcvs_tunables/min_freq_mhz    (MHz; -1 resets)
+# reached through the `gmu` symlink adreno_sysfs.c:747 creates from the kgsl-3d0 device
+# onto the GMU platform device (soc/3d37000.qcom,gmu).
+#
+# This is the vendor-blessed lever, not a guess: targetresourceconfigs.xml remaps perf-HAL
+# opcode 0x4280C000 (GPU major 0xA, minor 0x3) onto exactly this node for canoe, overriding
+# the generic kgsl devfreq/min_freq that other targets use.
+#
+# Two reasons a plain vendor_init `write` is enough, where the CPU side needed a perf-lock
+# daemon (gameperfd) and therefore a KSU module:
+#   1. It does not decay. dcvs_tuning_store() latches the value in kernel state and, if the
+#      GMU is asleep, marks it .update=true so it is re-sent over HFI on the next slumber
+#      exit. Nothing has to stay alive holding a lock.
+#   2. It is uncontended. Nothing in the stock perf stack writes 0x4280C000 --
+#      perfboostsconfig.xml and qapeboostsconfig.xml only ever touch min_pwrlevel
+#      (0x42804000), mod_percent (0x42828000), touch_wake (0x42834000) and the step-down
+#      tunables. So no perflock release can clobber our value.
+# vendor_init may write it under enforcing with no new policy: AOSP already grants
+# `allow vendor_init { sysfs_type -sysfs_usermodehelper }:file rw_file_perms`, and the GMU
+# sysfs dir carries no vendor label (generic sysfs), so no odm .cil is needed. Good, since
+# a custom odm_sepolicy.cil bricks this device.
+#
+# Adreno 840 pwrlevels on THIS unit, read live from gpu_available_frequencies and
+# matching the fused speed bin (dtb qcom,gpu-pwrlevels-1, qcom,speed-bin 0xfc), MHz:
+#   1200 1050 967 902 826 726 646 578 539 500 461 422 382 342 282 222 191 160
+# NOTE the dtb contains 15 concatenated FDTs and four speed bins; `dtc` on the blob only
+# decodes the first, which tops out at 1050 and is NOT this unit's table.
+#
+# The kernel does not range-check this node (writing 9999 was accepted verbatim), so only
+# ever feed it real table entries. RedMagicControl offers -1 / 902 / 1050 / 1200.
+#
+# ⚠ A floor is NOT what limits this device. Measured 2026-08-27: the GPU already reaches
+# 1200 MHz unaided; the real limiter is thermal-engine's [SKIN_GPU_MONITOR], which caps
+# the GPU at 826 MHz once skin-msm-therm passes 40 C. A high floor fights that cap rather
+# than removing it -- which is exactly why the 1200 option carries a warning in the UI.
+# The profile prop carries the whole state: a MHz value, or -1 for Balanced (which is
+# also the kernel's own "reset this tunable" value). There is deliberately NO separate
+# enable flag -- an earlier version had one, and gating the RESET on it left the GPU
+# pinned at the previous profile's floor when the user switched to Balanced. Measured on
+# hardware 2026-08-27: switching to Balanced left min_freq_mhz stuck at 902.
+#
+# `=*` matches any non-empty value, and works inside a compound trigger (init's
+# Action::CheckPropertyTriggers, action.cpp ~199). So this fires both on game start and
+# immediately when the profile is changed while a game is already running. If the prop
+# has never been set it is empty, the trigger never fires, and the GPU keeps stock DCVS.
+on property:persist.sys.power_mode_perf=1 && property:persist.sys.rm.gamegpu.mhz=*
+    write /sys/class/kgsl/kgsl-3d0/gmu/dcvs_tunables/min_freq_mhz ${persist.sys.rm.gamegpu.mhz}
+
+# Clearing on game exit is deliberately NOT gated on the profile prop, so no combination
+# of profile switches, upgrades or half-set properties can leave the GPU pinned.
+on property:persist.sys.power_mode_perf=0
+    write /sys/class/kgsl/kgsl-3d0/gmu/dcvs_tunables/min_freq_mhz -1
+
+# ---- boot-time GPU floor reset ----
+# persist.sys.power_mode_perf SURVIVES REBOOTS. If it is left at 1 -- GameSpace killed
+# mid-game, force-stopped, battery died, or a manual setprop during testing -- then on the
+# next boot the "=1 && gamegpu.mhz=*" trigger above pins the floor, and the "=0" reset can
+# never fire because the value never CHANGES. The GPU then sits at the profile floor
+# forever, across reboots. Measured 2026-08-28: 902 MHz at 4% busy, ~22 mA of pure waste,
+# and the phone had been like that since the last benchmark run.
+# No game is ever running this early, so clearing unconditionally is always correct.
+# This is the safety net for when GameSpace never starts at all (disabled/not installed);
+# GameSpaceService.startGameSpace() also normalises the property itself on every boot.
+on property:sys.boot_completed=1
+    write /sys/class/kgsl/kgsl-3d0/gmu/dcvs_tunables/min_freq_mhz -1
+
+# ---- LED re-apply (fixes "selecting the same option does nothing") ----
+# init property triggers fire ONLY when the value CHANGES. So re-picking the effect/colour
+# a zone is already set to produced no write at all, and the LEDs appeared stuck --
+# verified 2026-08-27: commanding a value equal to the current prop logged nothing in the
+# aw22xxx driver. The app already bumps sys.rm.settings_rev (a timestamp, so it always
+# changes) on every settings edit, but nothing consumed it. Now we do.
+#
+# All three zones are written, then committed once: per the hardware guide, "each zone is
+# set independently -- write all zones before committing to apply them together".
+# Defaults are 0 (= m_led_off) so a zone the user never configured stays off.
+on property:sys.rm.settings_rev=*
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.logo:-0}
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.shoulder:-0}
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan:-0}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+
+# ---- charge cooling (fan/pump ownership fix, 2026-08-27) ----
+# BUG: ChargeCooling used to write persist.sys.fan.level directly, so its restore
+# path fired the manual-level trigger and overwrote whatever game cooling had just
+# set. Observed live: fan at level 0 while BOTH persist.sys.power_mode_perf=1 and
+# persist.sys.rm.gamecool=1 were still set.
+#
+# The app now publishes only its own request prop and never touches the user's
+# level, so the two features cannot clobber each other's hardware writes. An
+# arbiter that made vendor_init setprop was tried and REVERTED: set_prop for
+# rm_ctrl_prop is granted to hwcontrol/system_app/slider_uewake only, NOT to
+# vendor_init (there are already `comm="init"` denials for rm_hw_prop in logcat),
+# so vendor_init can READ ${persist.sys.rm.*} but cannot publish.
+on property:persist.sys.rm.chargecool.active=1
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level ${persist.sys.rm.chargecool.fan:-3}
+    write /proc/driver/micropump/enable 1
+
+# active=2: "Fan speed while charging = Auto". Raise the fan rail and the pump, but deliberately
+# do NOT write fan_speed_level -- hwcontrol keeps driving persist.sys.fan.level from temperature
+# and the `on property:persist.sys.fan.level=N` triggers above do the write. Pinning a level here
+# would fight that loop, which is the same mistake the game-cooling comment below documents.
+on property:persist.sys.rm.chargecool.active=2
+    write /sys/kernel/fan/fan_enable 1
+    write /proc/driver/micropump/enable 1
+
+on property:persist.sys.rm.chargecool.active=0
+    write /sys/kernel/fan/fan_speed_level ${persist.sys.fan.level:-0}
+    write /proc/driver/micropump/enable ${persist.sys.cooling.level:-0}
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=0
+    write /sys/kernel/fan/fan_enable 0

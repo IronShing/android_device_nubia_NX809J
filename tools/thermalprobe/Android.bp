@@ -1,0 +1,7 @@
+cc_binary {
+    name: "nx809j_thermalprobe",
+    srcs: ["thermalprobe.c"],
+    shared_libs: ["libdl"],
+    system_ext_specific: true,
+    cflags: ["-Wall"],
+}

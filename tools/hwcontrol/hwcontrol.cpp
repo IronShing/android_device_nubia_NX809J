@@ -11,14 +11,54 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <unistd.h>
+#include <algorithm>
 #include <string>
 #include <cstdlib>
 
 using android::base::GetBoolProperty;
+using android::base::GetProperty;
 using android::base::SetProperty;
 using android::base::ReadFileToString;
 
 namespace {
+
+// ---- fan-ring RGB follows the auto fan ----
+//
+// Lights the fan ring only while the automatic fan is actually spinning, so the ring is a
+// readout of "the phone is cooling itself" rather than static decoration.
+//
+// We do NOT write persist.sys.rm.led.fan: that is the user's own Lighting setting, and
+// clobbering it would lose their colour the first time the fan spun (the same mistake
+// ChargeCooling documents for persist.sys.fan.level). Instead we publish a request pair and
+// let vendor_init drive the LED, exactly like chargecool.active -- on release it re-writes
+// the user's value, so there is no saved state to drift.
+constexpr char kFollowProp[]  = "persist.sys.rm.fan_rgb_follow";
+constexpr char kActiveProp[]  = "persist.sys.rm.fan_rgb.active";
+constexpr char kValueProp[]   = "persist.sys.rm.fan_rgb.value";
+constexpr char kUserLedProp[] = "persist.sys.rm.led.fan";
+// Encoding is 0x<pos><eee><ccc> -- the same string the settings app writes. Fan ring is
+// position 3, effect 002 = constant, and colours 101-108 are the multi-colour RGB presets,
+// which ship for the fan ring only (aw_fan*_10{1..8}.bin).
+constexpr char kOnEffect[]      = "002";        // constant: a plain "it is on" effect
+constexpr char kFallbackValue[] = "0x3002101";  // constant + RGB 1, used only if nothing is set
+
+// What to light the ring with.
+//
+// Three cases, in order:
+//   1. The zone is already set to something lit -> use it verbatim, effect and all.
+//   2. The zone has a colour but its effect is Off (000) -> keep THEIR colour and substitute a
+//      constant effect. Turning the zone off in the Lighting tab is a statement about the idle
+//      ring, not a request to discard the colour, and the previous code threw the colour away
+//      and fell back to red -- a user with RGB 3 selected got red, which is not what they asked
+//      the ring to be.
+//   3. Nothing usable stored -> an RGB preset, not red.
+std::string fanRingValue() {
+    const std::string v = GetProperty(kUserLedProp, "");
+    const bool wellFormed = v.size() == 9 && v.rfind("0x", 0) == 0;
+    if (!wellFormed) return kFallbackValue;
+    if (v.compare(3, 3, "000") != 0) return v;                  // already lit
+    return v.substr(0, 3) + kOnEffect + v.substr(6, 3);          // their colour, made visible
+}
 
 // Only sensors a fan can actually do something about: the SoC complexes and the battery.
 //
@@ -73,8 +113,19 @@ int readMaxTempC() {
 int main() {
     LOG(INFO) << "hwcontrol: started (auto-fan)";
     int lastLvl = -1;
+    int lastRgb = -1;          // -1 = unknown, so the first pass always publishes
     for (;;) {
-        if (GetBoolProperty("persist.sys.rm.fan_auto", false)) {
+        // Charge cooling asks for the curve with chargecool.active=2 ("Fan speed while charging =
+        // Auto"). Honour it even when the user has the fan set to a fixed speed or Off the rest
+        // of the time -- otherwise picking Auto there would only ever run the pump.
+        const bool chargeAuto = GetProperty("persist.sys.rm.chargecool.active", "0") == "2";
+        // Game mode with "Fan speed while gaming = Auto". Read here rather than having gameperfd
+        // publish a floor: gameperfd owns the pump and the perf lock, hwcontrol owns the curve.
+        const bool gameAuto =
+            GetProperty("persist.sys.power_mode_perf", "0") == "1" &&
+            GetBoolProperty("persist.sys.rm.gamecool", true) &&
+            GetProperty("persist.sys.rm.gamecool.fan", "auto") == "auto";
+        if (chargeAuto || gameAuto || GetBoolProperty("persist.sys.rm.fan_auto", true)) {
             int c = readMaxTempC();
             int lvl;                       // hysteresis-friendly thresholds
             if      (c >= 70) lvl = 5;
@@ -83,12 +134,47 @@ int main() {
             else if (c >= 46) lvl = 2;
             else if (c >= 40) lvl = 1;
             else              lvl = 0;
+
+            // Floor while charging/gaming asks for Auto.
+            //
+            // Without this, "Auto" during a fast charge did nothing visible: a phone you have
+            // just plugged in is ~30 C, the curve returns 0, and `on property:fan.level=0` in
+            // redmagic_hw_arm.rc writes fan_enable 0 -- which cancels the fan_enable 1 that the
+            // chargecool.active=2 trigger had just set. Pump ran, fan never spun, and the ring
+            // stayed dark (it needs level > 0, and the aw22xxx LED needs the fan rail up at all).
+            // Observed on hardware 2026-08-29. A floor makes "cool while charging" mean something
+            // immediately while the curve still takes over as soon as it asks for more.
+            int floorLvl = 0;
+            if (chargeAuto) {
+                floorLvl = android::base::GetIntProperty(
+                    "persist.sys.rm.chargecool.floor", 2, 0, 5);
+            }
+            if (gameAuto) {
+                floorLvl = std::max(floorLvl, android::base::GetIntProperty(
+                    "persist.sys.rm.gamecool.floor", 2, 0, 5));
+            }
+            if (lvl < floorLvl) lvl = floorLvl;
+
             if (lvl != lastLvl) {
                 SetProperty("persist.sys.fan.level", std::to_string(lvl));
                 lastLvl = lvl;
             }
+
+            // Ring on exactly while the fan is spinning under auto control.
+            const int want = (lvl > 0 && GetBoolProperty(kFollowProp, true)) ? 1 : 0;
+            if (want != lastRgb) {
+                if (want) SetProperty(kValueProp, fanRingValue());
+                SetProperty(kActiveProp, want ? "1" : "0");
+                lastRgb = want;
+            }
         } else {
             lastLvl = -1;   // auto off: forget, so re-enabling re-applies
+            // Hand the ring back to the user's Lighting setting when auto mode is turned off
+            // mid-spin, otherwise it would stay stuck on our value.
+            if (lastRgb != 0) {
+                SetProperty(kActiveProp, "0");
+                lastRgb = 0;
+            }
         }
         usleep(2 * 1000 * 1000);   // 2s poll
     }

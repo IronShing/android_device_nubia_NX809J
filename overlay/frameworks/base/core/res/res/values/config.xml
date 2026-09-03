@@ -150,4 +150,15 @@
         <item>bugreport</item>
         <item>logout</item>
     </string-array>
+
+    <!-- Android Auto (2026-09-02). Minimal and microG do not get the Pixel RRO
+         GoogleConfigOverlay (WITH_GMS=true only), which is what makes gearhead the
+         SYSTEM_AUTOMOTIVE_PROJECTION role holder on Full. Without a holder the role is empty and
+         Android Auto cannot project even when installed. The role is systemOnly, so this only
+         takes effect together with the preinstalled AndroidAutoStubPrebuilt from android_auto.mk.
+         Listener access mirrors PixelConfigOverlayCommon so AA can read notifications/messages
+         without the user hunting for the toggle. Full keeps its RRO values (RRO wins at runtime),
+         which name the same package. -->
+    <string name="config_systemAutomotiveProjection" translatable="false">com.google.android.projection.gearhead</string>
+    <string name="config_defaultListenerAccessPackages" translatable="false">com.google.android.projection.gearhead</string>
 </resources>

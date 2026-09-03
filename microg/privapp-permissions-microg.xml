@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Privileged permissions for microG.
+
+     Derived by taking every permission each APK requests and keeping those the platform marks
+     signature|privileged in frameworks/base/core/res/AndroidManifest.xml. Without these entries
+     the permissions are denied. On this ROM ro.control_privapp_permissions resolves to "log" at
+     runtime, so they are denied and logged rather than fatal; under "enforce" a missing entry
+     makes PackageManagerService throw during systemReady() and the device boot-loops.
+     See nx809j_privapp_allowlist_bootloop.
+
+     Regenerate after a microG version bump: the permission set can change between releases. -->
+<permissions>
+    <privapp-permissions package="com.google.android.gms">
+        <permission name="android.permission.CHANGE_DEVICE_IDLE_TEMP_WHITELIST"/>
+        <permission name="android.permission.DUMP"/>
+        <permission name="android.permission.INSTALL_LOCATION_PROVIDER"/>
+        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+        <permission name="android.permission.LOCATION_HARDWARE"/>
+        <permission name="android.permission.MANAGE_USB"/>
+        <permission name="android.permission.MODIFY_PHONE_STATE"/>
+        <permission name="android.permission.NETWORK_SCAN"/>
+        <permission name="android.permission.PROVIDE_DEFAULT_ENABLED_CREDENTIAL_SERVICE"/>
+        <permission name="android.permission.PROVIDE_REMOTE_CREDENTIALS"/>
+        <permission name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"/>
+        <permission name="android.permission.UPDATE_APP_OPS_STATS"/>
+        <permission name="android.permission.UPDATE_DEVICE_STATS"/>
+        <permission name="android.permission.WATCH_APPOPS"/>
+    </privapp-permissions>
+    <privapp-permissions package="com.android.vending">
+        <permission name="android.permission.DELETE_PACKAGES"/>
+        <permission name="android.permission.INSTALL_PACKAGES"/>
+        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+    </privapp-permissions>
+</permissions>

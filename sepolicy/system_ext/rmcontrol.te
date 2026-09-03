@@ -9,3 +9,16 @@ system_internal_prop(rm_hw_prop)
 set_prop(system_app, rm_hw_prop)
 # hwcontrol daemon settings props (app sets; hwcontrol daemon applies)
 set_prop(system_app, rm_ctrl_prop)
+
+# Remote Key Provisioning: the app CANNOT set the remote_provisioning.* properties itself.
+# system/sepolicy/private/property.te:820 neverallows every domain except init, keystore, shell,
+# system_server, rkpdapp and vendor_init from setting remote_prov_prop, and system_app is not on
+# that list -- adding the rule fails the build at the neverallow check, it is not merely denied.
+# So the app writes persist.sys.rm.rkp (rm_ctrl_prop, granted above) and init does the privileged
+# setprops from rkp.rc. Same shape as the dt2w arming bridge.
+
+# External-display fixed refresh: the app writes /sys/kernel/lcd_enhance/edid_modes.
+# The rule CANNOT live here -- that node is labelled sysfs_usb_ctrl, a VENDOR-only type that
+# system_ext policy cannot name ("unknown type sysfs_usb_ctrl" from checkpolicy). It is baked
+# into vendor_sepolicy.cil by sign_a17_release.sh instead, where both system_app and the vendor
+# type exist in the same policy. See memory nx809j_ext_display_fixed_refresh.

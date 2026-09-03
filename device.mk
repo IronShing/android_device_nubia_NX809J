@@ -58,13 +58,27 @@ PRODUCT_PACKAGES += \
 # this tree does NOT contain them. Without this guard the build fails on a missing source for anyone
 # who clones and builds. Drop the two APKs into desktop/ (checksums and download links are in
 # desktop/README.md) and they are picked up automatically.
-ifneq ($(wildcard $(LOCAL_PATH)/desktop/MagicDesk.apk),)
-PRODUCT_PACKAGES += \
-    MagicDesk \
-    Shizuku
-else
-$(warning NX809J: desktop/MagicDesk.apk absent - building without MagicDesk/Shizuku. See desktop/README.md)
-endif
+# REMOVED FROM THE ROM 2026-08-27. Two reasons, both decisive:
+#
+# 1. Preinstalling these is BROKEN BY DESIGN. Both are upstream release APKs with
+#    compressed lib/arm64-v8a/*.so and extractNativeLibs=true. That layout is only
+#    correct for an app the platform INSTALLS -- it unpacks the libs to
+#    /data/app/<pkg>/lib/arm64. A preinstalled app on a read-only partition never gets
+#    that step, and the build did not place the libs at <appdir>/lib/arm64 either, so
+#    /product/app/Shizuku/ held only the APK. Result, reproduced on hardware:
+#      FATAL EXCEPTION: java.lang.UnsatisfiedLinkError:
+#      dlopen failed: library "libadb.so" not found
+#          at moe.shizuku.manager.ShizukuApplication.<clinit>
+#    i.e. Shizuku crashed instantly for every user (XDA #12, Haldi4803). The
+#    skip_preprocessed_apk_checks:true in desktop/Android.bp had suppressed exactly the
+#    check that catches compressed JNI libs in a preprocessed APK.
+#    The same APK installed normally works: verified, MainActivity resumed, 0 crashes.
+#
+# 2. Shizuku is a privilege broker. Baking it into the system partition makes it
+#    un-uninstallable and is the user's decision to make, not ours.
+#
+# Both are shipped as optional downloads instead. MagicDesk depends on Shizuku as its
+# only privilege transport, so they leave together.
 
 # OpenEUICC — privileged eSIM LPA (Local Profile Assistant) for the internal
 # removable eUICC. Builds from packages/apps/OpenEUICC as a platform-signed
@@ -124,6 +138,14 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # necessary-but-insufficient prereqs — without an ImsService the framework has
 # nothing to bind. See ims.mk + volte_call_audio_2026-06-16.
 include $(LOCAL_PATH)/ims.mk
+
+# The three microG APKs are upstream release binaries and are .gitignore'd (GmsCore alone is
+# 108 MB, over GitHub's file limit), so a fresh clone does NOT contain them. microg/Android.bp
+# references them unconditionally, so a missing file fails Soong for EVERY variant with an
+# opaque "source path does not exist" - fail here first, with instructions.
+ifeq ($(wildcard $(LOCAL_PATH)/microg/prebuilt/MicroGGmsCore.apk),)
+$(error NX809J: microg/prebuilt/*.apk absent. Download the three microG APKs listed in microg/prebuilt/README.md (sha256 pinned there) before building any variant)
+endif
 
 # QTI AIDL audio HAL vendor-parameter extension — THE fix for silent VoLTE audio.
 # On Android 16 the AIDL audio HAL no longer parses legacy AudioManager.setParameters
@@ -268,6 +290,21 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PACKAGES += \
     dt2w_uewake \
     dt2w_uewake_arm.rc
+
+# RKP toggle: init-domain property bridge. The RedMagic Control switch writes
+# persist.sys.rm.rkp and these actions do the remote_provisioning.* setprops, which the app
+# itself is neverallowed to do (property.te). See rkp/rkp.rc.
+PRODUCT_PACKAGES += \
+    rkp.rc
+
+# gameperfd (vendor: true -> out/.../vendor/bin; sign_a17_release.sh bakes that file into the
+# hybrid vendor). It was NOT listed here, so target-files-package never rebuilt it: the 20260829
+# and 20260831/0901 releases shipped a binary compiled BEFORE the gamecool/fan-auto rewrite of
+# the same day (verified 2026-09-02: `strings /vendor/bin/gameperfd` had no "gamecool"), which is
+# why "Fan speed while gaming" and "Cool while gaming" did nothing and the fan ran at 5 in every
+# Performance-mode game (XDA Bobo9996). Listing it makes every build compile the current source.
+PRODUCT_PACKAGES += \
+    gameperfd
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/dt2w/dt2w_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/dt2w_uewake.kl
 
@@ -502,6 +539,15 @@ PRODUCT_PACKAGES += \
     wpa_supplicant \
     wpa_supplicant.conf
 
+# Wi-Fi capability RRO. The stock vendor overlays (/vendor/overlay/WifiResMainlineTarget*.apk)
+# target com.google.android.wifi.resources — the GMS wifi module — so they never apply on our
+# AOSP wifi module and every device Wi-Fi capability falls back to the AOSP default. Most
+# visibly config_wifi5ghzSupport, which defaults to false and makes the 5 GHz hotspot
+# unselectable (picking it restarts the AP back onto 2.4 GHz). See
+# rro_overlays/WifiOverlay/Android.bp.
+PRODUCT_PACKAGES += \
+    NX809JWifiOverlay
+
 # 16 KB page size check bypass for prebuilt libraries
 #
 # Android 16 (Baklava) introduced PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE which
@@ -622,3 +668,37 @@ $(call inherit-product-if-exists, device/nubia/NX809J/audio/viper4android/viper4
 $(call inherit-product-if-exists, device/nubia/NX809J/ir/ir.mk)
 
 PRODUCT_COPY_FILES += \
+
+# --- LOCAL TEST BUILD ONLY: pre-authorised adb.  NEVER SHIP THIS. ---
+# Baking a developer's adb public key into the image means every device running
+# that image trusts that key -- a remote-access backdoor in a public ROM. This is
+# gated so it can only ever be enabled deliberately, for a build that is flashed
+# and tested locally and then thrown away:
+#     NX809J_TEST_ADB=true m ...
+# /adb_keys is already a symlink to /product/etc/security/adb_keys (which nothing
+# creates), so the key must land in PRODUCT for the symlink to resolve. Also force
+# usb into adb mode, because a full flash erases /data, taking both
+# /data/misc/adb/adb_keys and /data/property/persistent_properties with it --
+# see the 2026-08-22 note above about why this is NOT a default.
+ifeq ($(NX809J_TEST_ADB),true)
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/testadb/adb_keys:$(TARGET_COPY_OUT_PRODUCT)/etc/security/adb_keys
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/testadb/00-testadb.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/00-testadb.rc
+endif
+
+# Personal (developer's own phone) extras on top of Minimal, 2026-09-03:
+#     NX809J_PERSONAL=true m ...
+# Google app (Velvet, 368 MB, priv-app in product from vendor/gms) + the Circle to Search
+# framework strings (overlay-personal/). Minimal stays minimal for everyone else; Full already
+# has both via gms_full.mk + PixelConfigOverlayCommon. Gated separately from NX809J_TEST_ADB
+# because that flag is about the adb key, and a personal build must still be flashable
+# through flash_super_dev.sh when it has no key baked. Requires GMS (Velvet is useless on
+# microG), so it is a no-op there.
+ifeq ($(NX809J_PERSONAL),true)
+ifneq ($(NX809J_MICROG),true)
+PRODUCT_PACKAGES += \
+    Velvet
+PRODUCT_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay-personal
+endif
+endif

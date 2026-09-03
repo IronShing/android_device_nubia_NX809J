@@ -7,7 +7,7 @@
     <string name="desc_loudness">Extra speaker loudness (makeup gain)</string>
     <string name="desc_fpwake">Wake &amp; unlock by fingerprint from deep sleep</string>
     <string name="desc_dt2w">Double-tap the screen to wake</string>
-    <string name="loudness_gain">Loudness boost</string>
+    <string name="loudness_gain">Makeup gain</string>
     <string name="tile_fan">Cooling Fan</string>
     <string name="tile_cooling">Liquid Cooling</string>
     <string name="off">Off</string>

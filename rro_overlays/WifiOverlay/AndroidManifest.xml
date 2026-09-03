@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nx809j.overlay.wifi"
+    android:versionCode="1"
+    android:versionName="1.0">
+    <!-- Static: these are hardware capability facts, never user-toggleable.
+         targetName must match the <overlayable> block in ServiceWifiResources
+         (packages/modules/Wifi/service/ServiceWifiResources/res/values/overlayable.xml),
+         whose policy is odm|product|system|vendor — hence product_specific. -->
+    <overlay
+        android:targetPackage="com.android.wifi.resources"
+        android:targetName="WifiCustomization"
+        android:isStatic="true"
+        android:priority="0" />
+    <application android:hasCode="false" />
+</manifest>

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Verbatim merge of the stock vendor Wi-Fi resource overlays:
+
+       /vendor/overlay/WifiResMainlineTarget.apk      (com.google.android.wifi.resources.overlay.target)
+       /vendor/overlay/WifiResMainlineTarget_spf.apk  (com.google.android.wifi.resources.overlay.spf)
+
+     Both target com.google.android.wifi.resources (the GMS wifi module) and so
+     never apply on our AOSP-wifi-module build. Re-declared here against
+     com.android.wifi.resources. Every value below differs from the AOSP
+     default, i.e. all of them were being lost.
+
+     To re-verify after a vendor blob refresh:
+       out/host/linux-x86/bin/aapt2 dump resources \
+         vendor/nubia/NX809J/proprietary/vendor/overlay/WifiResMainlineTarget.apk
+-->
+<resources>
+    <!-- From WifiResMainlineTarget.apk -->
+
+    <!-- The chip has 5 GHz. AOSP defaults this to false, which is what breaks
+         the 5 GHz hotspot: ApConfigUtil.isSoftApBandSupported() consults only
+         this resource, while Settings offers the band based on the chip's STA
+         capability (WifiManager.is5GHzBandSupported()). -->
+    <bool name="config_wifi5ghzSupport">true</bool>
+
+    <bool name="config_wifiBridgedSoftApSupported">true</bool>
+    <bool name="config_wifiStaWithBridgedSoftApConcurrencySupported">true</bool>
+    <bool name="config_wifiMultiStaLocalOnlyConcurrencyEnabled">true</bool>
+    <bool name="config_wifiMultiStaMultiInternetConcurrencyEnabled">true</bool>
+    <bool name="config_wifiMultiStaRestrictedConcurrencyEnabled">true</bool>
+
+    <!-- Do not silently discard the user's saved SoftAp settings. AOSP defaults
+         all five to true, which resets an unsupported field to its default
+         instead of keeping it. -->
+    <bool name="config_wifiSoftapResetChannelConfig">false</bool>
+    <bool name="config_wifiSoftapResetAutoShutdownTimerConfig">false</bool>
+    <bool name="config_wifiSoftapResetHiddenConfig">false</bool>
+    <bool name="config_wifiSoftapResetMaxClientSettingConfig">false</bool>
+    <bool name="config_wifiSoftapResetUserControlConfig">false</bool>
+
+    <!-- Driver-side ACS. The firmware already picks the SoftAp channel itself. -->
+    <bool name="config_wifi_softap_acs_supported">true</bool>
+
+    <integer name="config_wifiHardwareSoftapMaxClientCount">10</integer>
+    <integer name="config_wifiSoftApMaxNumberMLDSupported">2</integer>
+
+    <!-- From WifiResMainlineTarget_spf.apk -->
+
+    <!-- The driver emits NL80211_CMD_REG_CHANGE; without this the framework
+         does not track regulatory-domain changes reported by the firmware. -->
+    <bool name="config_wifiDriverSupportedNl80211RegChangedEvent">true</bool>
+
+    <bool name="config_wifiSoftapIeee80211beSupported">true</bool>
+    <bool name="config_wifiUseHalApiToDisableFwRoaming">true</bool>
+    <bool name="config_wifi_connected_mac_randomization_supported">true</bool>
+
+    <!-- ==================================================================
+         NOT from the vendor overlays. Four additions that turn on the 6 GHz
+         hotspot, which the vendor never enabled even though the chip can do
+         it (with these forced at runtime the driver returned
+         SupportedChannelListIn6g[1, 5, 9 ... 93]).
+
+         Revert this whole block to fall back to exactly the stock vendor
+         capability set.
+         ================================================================== -->
+
+    <!-- Both are required: ApConfigUtil.isSoftApBandSupported(BAND_6GHZ) is
+         config_wifi6ghzSupport AND config_wifiSoftap6ghzSupported. -->
+    <bool name="config_wifi6ghzSupport">true</bool>
+    <bool name="config_wifiSoftap6ghzSupported">true</bool>
+
+    <!-- 6 GHz mandates WPA3. Settings rewrites the config to
+         SECURITY_TYPE_WPA3_SAE when the user picks 6 GHz
+         (WifiHotspotRepository.setSpeedType), and without this
+         ApConfigUtil.checkSupportAllConfiguration() rejects it with
+         "Error, SAE requires HAL support". The vendor hostapd binary is built
+         with SAE (sae_password / sae_pwe / sae_require_mfp all present). -->
+    <bool name="config_wifi_softap_sae_supported">true</bool>
+
+    <!-- Required by hostapd, which refuses a config with EHT but no HE:
+         "Cannot set ieee80211be without ieee80211ax". HostapdHalAidlImp derives
+         hwModeParams.enable80211AX from this resource alone, so with the
+         vendor's config_wifiSoftapIeee80211beSupported=true above and this
+         left at the AOSP default of false, hostapd would be handed
+         ieee80211ax=0 + ieee80211be=1 and reject it. HE is also mandatory on
+         6 GHz. Side benefit: the tethered AP currently negotiates 802.11n
+         (SoftApInfo wifiStandard=4); with this it can use ax/be. -->
+    <bool name="config_wifiSoftapIeee80211axSupported">true</bool>
+</resources>

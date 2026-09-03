@@ -1,9 +1,17 @@
 # loudness — global LoudnessEnhancer makeup-gain service. Gated on
 # persist.sys.loudness.enabled; gain (mB) via persist.sys.loudness_gain_mb.
-# Runs as audioserver so it holds MODIFY_AUDIO_ROUTING for the global-mix effect.
+# Runs as SYSTEM, not audioserver. Both uids hold MODIFY_AUDIO_ROUTING, but as audioserver the
+# daemon HANGS inside AudioEffect creation -- it never reaches setParameter, so the process looks
+# alive and init reports "running" while no effect is ever attached and there is no gain.
+# Measured 2026-08-30 on the shipped build, same binary, three uids:
+#   root        -> attaches, audibly louder
+#   system      -> attaches, full success output
+#   audioserver -> stalls after "target gain", no effect chain, silent failure
+# (An effect client calling into audioserver from audioserver's own uid deadlocks.) This is why
+# the KSU-module version worked -- it ran as root -- while the ROM-baked service never did.
 service loudness /system_ext/bin/loudness
     class late_start
-    user audioserver
+    user system
     group audio
     disabled
     oneshot

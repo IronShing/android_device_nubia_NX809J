@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto (com.google.android.projection.gearhead) privileged-permission allowlist for the
+     microG variant, which ships nothing from vendor/gms. Verbatim copy of the gearhead block in
+     vendor/gms/product/blobs/etc/permissions/privapp-permissions-google-p.xml. -->
+<permissions>
+    <privapp-permissions package="com.google.android.projection.gearhead">
+        <permission name="android.permission.ACTIVITY_EMBEDDING"/>
+        <permission name="android.permission.BIND_APPWIDGET"/>
+        <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
+        <permission name="android.permission.CALL_PRIVILEGED"/>
+        <permission name="android.permission.CHANGE_COMPONENT_ENABLED_STATE"/>
+        <permission name="android.permission.COMPANION_APPROVE_WIFI_CONNECTIONS"/>
+        <permission name="android.permission.CONTROL_INCALL_EXPERIENCE"/>
+        <permission name="android.permission.DUMP"/>
+        <permission name="android.permission.ENTER_CAR_MODE_PRIORITIZED"/>
+        <permission name="android.permission.LOCAL_MAC_ADDRESS"/>
+        <permission name="android.permission.LOCATION_HARDWARE"/>
+        <permission name="android.permission.MANAGE_USB"/>
+        <permission name="android.permission.MANAGE_USERS"/>
+        <permission name="android.permission.MODIFY_AUDIO_ROUTING"/>
+        <permission name="android.permission.MODIFY_DAY_NIGHT_MODE"/>
+        <permission name="android.permission.MODIFY_PHONE_STATE"/>
+        <permission name="android.permission.PERSONAL_CONTEXT_PUBLISH_HINTS"/>
+        <permission name="android.permission.PERSONAL_CONTEXT_READ_SETTINGS"/>
+        <permission name="android.permission.PERSONAL_CONTEXT_RECEIVE_INSIGHTS"/>
+        <permission name="android.permission.POWER_SAVER"/>
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+        <permission name="android.permission.REQUEST_COMPANION_SELF_MANAGED"/>
+        <permission name="android.permission.SCHEDULE_EXACT_ALARM"/>
+        <permission name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"/>
+        <permission name="android.permission.TETHER_PRIVILEGED"/>
+        <permission name="android.permission.UPDATE_APP_OPS_STATS"/>
+    </privapp-permissions>
+</permissions>
