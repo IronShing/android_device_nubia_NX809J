@@ -50,10 +50,8 @@ public class RmApp extends Application {
         // flipped persist.sys.power_mode_perf. No-op until a game triggers it.
         GamePerfWifi.start(this);
 
-        // RKP: the remote_provisioning.* properties are NOT persist.*, so they are lost on every
-        // reboot and must be re-applied from the user's stored choice. No-op when the toggle is
-        // off, which is the default.
-        Rkp.reapply(this);
+        // RKP needs nothing at boot: init re-fires rkp.rc from persist.sys.rm.rkp before
+        // BOOT_COMPLETED, and rkpdapp's own BootReceiver picks the hostname up from there.
 
         // External-display caps ("no more than 1080p/60") re-applied on every connection.
         // No-op until the user sets a limit; must live here rather than in the panel because the
@@ -63,6 +61,14 @@ public class RmApp extends Application {
         // Ship "Fast" as the animation-speed default. One-shot; the user's own choice wins
         // from then on.
         AnimationDefaults.applyOnce(this);
+
+        // Under-display selfie camera: black out the pixels above the sensor while a third-party
+        // app streams from it (stock SystemUI does this; AOSP SystemUI does not). See UdcMask.
+        UdcMask.start(this);
+
+        // Game super-resolution / frame interpolation (Qualcomm GPP on the NPU). The live
+        // vendor.gpp.* properties do not persist, so re-issue the user's choice every boot.
+        GamePostProcessing.apply();
 
         // Bundled MagicDesk needs display-over-apps. Doing it here saves it asking Shizuku for
         // something we can grant directly; it is a no-op once the op has any explicit value.

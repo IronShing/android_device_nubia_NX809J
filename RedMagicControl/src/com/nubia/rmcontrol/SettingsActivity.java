@@ -105,6 +105,7 @@ public class SettingsActivity extends Activity {
                 + "set to Auto out of the box, so the phone still cools itself by temperature. Set "
                 + "that one to Off if you want the fan silent.");
         gpuProfileRow(cooling);
+        gppSection(cooling);
         // GamePerfWifi has no setting of its own -- it is automatic and therefore invisible, and
         // people have gone looking for a "wifi low latency" toggle that does not exist. Say so.
         note(cooling, "Launching a game from Game Space also maxes out WiFi performance "
@@ -158,15 +159,11 @@ public class SettingsActivity extends Activity {
         displayRefreshRow(display);
         note(display, "For an external screen over USB-C (dock or adapter). If the picture drops "
                 + "out, glitches or never appears, the cable or hub probably cannot carry the "
-                + "bandwidth the screen is asking for. Pick a smaller mode here and the phone "
-                + "pins the display to it.\n\n"
-                + "Work DOWN the list: lower RESOLUTION is what actually reduces the load. "
-                + "Lowering only the refresh often does not \u2014 1080p at 50Hz and at 60Hz both "
-                + "run at 148.5MHz on this hardware, because the 50Hz timing just has wider "
-                + "blanking (measured).\n\n"
-                + "The list is read from the connected screen, so it only offers modes that screen "
-                + "supports. It applies when the phone next detects the display, not immediately "
-                + "\u2014 so after choosing, unplug and replug the cable.");
+                + "bandwidth the screen is asking for. Set a limit here and every screen you "
+                + "connect is held within it: applied automatically once the connection has "
+                + "settled, or immediately with Apply now.\n\n"
+                + "The lists start with safe values and grow with whatever your screen advertises "
+                + "once one has been scanned.");
 
         // ---- Interface ----
         header(display, "Interface");
@@ -348,24 +345,60 @@ public class SettingsActivity extends Activity {
      */
     private TextView mDpHint;
 
-    private static final String[] RES_LABELS = { "Auto (max)", "1080p", "720p", "480p" };
-    private static final String[] RES_VALUES = { "auto", "1080", "720", "480" };
-    private static final String[] HZ_LABELS  = { "Auto (max)", "90 Hz", "60 Hz", "30 Hz" };
-    private static final String[] HZ_VALUES  = { "auto", "90", "60", "30" };
+    // The safe defaults every chooser starts with. After a screen has been scanned the lists are
+    // the UNION of these and what that screen advertised (see populateFromSink) -- a 4K144 monitor
+    // owner gets 2160p/1440p and 144/120 Hz as cap choices, a 1080p60 owner does not see junk.
+    private static final int[] RES_DEFAULT = { 1080, 720, 480 };
+    private static final int[] HZ_DEFAULT  = { 90, 60, 30 };
+
+    private Spinner mDensitySpinner, mExactResSpinner;
+    private Spinner mResSpinner, mHzSpinner;
 
     private static int indexOf(String[] values, String v) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(v)) return i;
         return 0;
     }
 
-    private void capRow(LinearLayout page, String title, String prop,
-                        String[] labels, String[] values) {
-        LinearLayout row = labelledRow(page, title);
-        Spinner sp = new Spinner(this);
+    private static String resLabel(int h) {
+        switch (h) {
+            case 2160: return "2160p (4K)";
+            case 1440: return "1440p";
+            default:   return h + "p";
+        }
+    }
+
+    /** Descending union of the defaults and what the last scanned sink offered. */
+    private static int[] union(int[] base, int[] seen) {
+        final java.util.TreeSet<Integer> set = new java.util.TreeSet<>(java.util.Collections.reverseOrder());
+        for (int v : base) set.add(v);
+        for (int v : seen) if (v > 0) set.add(v);
+        final int[] out = new int[set.size()];
+        int i = 0;
+        for (int v : set) out[i++] = v;
+        return out;
+    }
+
+    /**
+     * (Re)build one chooser's list without losing the stored selection. The stored value may be
+     * one that is no longer in the list (cap set on a different screen); it is kept as a choice
+     * so the setting is never silently rewritten by opening this page.
+     */
+    private void fillCap(Spinner sp, String prop, int[] ladder, boolean res) {
+        final String cur = Prop.get(prop, "auto");
+        int curV = 0;
+        try { if (!"auto".equals(cur)) curV = Integer.parseInt(cur.trim()); } catch (NumberFormatException ignored) {}
+        final int[] all = curV > 0 ? union(ladder, new int[] { curV }) : ladder;
+        final String[] labels = new String[all.length + 1];
+        final String[] values = new String[all.length + 1];
+        labels[0] = "Auto (max)"; values[0] = "auto";
+        for (int i = 0; i < all.length; i++) {
+            values[i + 1] = Integer.toString(all[i]);
+            labels[i + 1] = res ? resLabel(all[i]) : all[i] + " Hz";
+        }
+        sp.setOnItemSelectedListener(null);   // adapter swap fires a selection; not a user act
         sp.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item, labels));
-        sp.setSelection(indexOf(values, Prop.get(prop, "auto")));
-        row.addView(sp);
+        sp.setSelection(indexOf(values, cur), false);
         sp.setOnItemSelectedListener(new SimpleSel() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                 final String want = values[pos];
@@ -376,9 +409,69 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    /**
+     * XDA #67 (NX123Dos): "although default list include low safe values, after successful
+     * device scanning, populate list with all possible display mode values". ExternalDisplay
+     * remembers the last sink's heights/rates across unplugs, so the lists stay useful with no
+     * screen attached.
+     */
+    private void populateFromSink() {
+        fillExactRes(mExactResSpinner);
+        final int[][] seen = ExternalDisplay.seenSink();
+        fillCap(mResSpinner, ExternalDisplay.PROP_MAX_RES, union(RES_DEFAULT, seen[0]), true);
+        fillCap(mHzSpinner,  ExternalDisplay.PROP_MAX_HZ,  union(HZ_DEFAULT,  seen[1]), false);
+    }
+
+    /**
+     * DeX-style exact-resolution picker (user request 2026-09-05): every W x H the last scanned
+     * screen advertised, aspect-labelled, largest first. Layered on the caps -- see
+     * ExternalDisplay.PROP_RES -- so a screen that lacks the choice falls back to the limits.
+     */
+    private void fillExactRes(Spinner sp) {
+        final String cur = Prop.get(ExternalDisplay.PROP_RES, "auto");
+        final java.util.List<String> all = ExternalDisplay.seenResolutions(this);
+        if (!"auto".equals(cur) && !all.contains(cur)) all.add(0, cur);   // keep an off-screen choice
+        final String[] labels = new String[all.size() + 1];
+        final String[] values = new String[all.size() + 1];
+        // Short labels: the row label has weight 1 and a long spinner text squeezes it out
+        // entirely (seen 2026-09-05: "Resolution" vanished behind a 40-char Auto label).
+        labels[0] = "Auto";
+        values[0] = "auto";
+        for (int i = 0; i < all.size(); i++) {
+            final String wh = all.get(i);
+            values[i + 1] = wh;
+            final int x = wh.indexOf('x');
+            int w = 0, h = 0;
+            try { w = Integer.parseInt(wh.substring(0, x)); h = Integer.parseInt(wh.substring(x + 1)); }
+            catch (RuntimeException ignored) {}
+            labels[i + 1] = w + "\u00d7" + h + " (" + ExternalDisplay.aspectLabel(w, h) + ")";
+        }
+        sp.setOnItemSelectedListener(null);
+        sp.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        sp.setSelection(indexOf(values, cur), false);
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                final String want = values[pos];
+                if (want.equals(Prop.get(ExternalDisplay.PROP_RES, "auto"))) return;
+                Prop.set(ExternalDisplay.PROP_RES, want);
+                applyDpCaps();
+            }
+        });
+    }
+
+    private Spinner capRow(LinearLayout page, String title) {
+        LinearLayout row = labelledRow(page, title);
+        Spinner sp = new Spinner(this);
+        row.addView(sp);
+        return sp;
+    }
+
     private void displayRefreshRow(LinearLayout page) {
-        capRow(page, "Max resolution", ExternalDisplay.PROP_MAX_RES, RES_LABELS, RES_VALUES);
-        capRow(page, "Max refresh rate", ExternalDisplay.PROP_MAX_HZ, HZ_LABELS, HZ_VALUES);
+        mExactResSpinner = capRow(page, "Resolution");
+        mResSpinner = capRow(page, "Max resolution");
+        mHzSpinner = capRow(page, "Max refresh rate");
+        populateFromSink();
 
         LinearLayout applyRow = labelledRow(page, "Apply to the connected screen");
         Button apply = new Button(this);
@@ -392,14 +485,157 @@ public class SettingsActivity extends Activity {
         mDpHint.setPadding(0, 0, 0, dp(8));
         page.addView(mDpHint);
         refreshDpHint(null);
+
+        LinearLayout fixRow = labelledRow(page, "Screen lit but black after plugging in?");
+        Button fix = new Button(this);
+        fix.setText("Fix");
+        fix.setOnClickListener(v -> kickDp());
+        fixRow.addView(fix);
+        addSwitch(page, "Do that on every connection", ExternalDisplay.PROP_AUTO_KICK, false);
+        note(page, "Some docks with a DisplayPort-to-HDMI converter inside keep their HDMI output "
+                + "set up for the last picture they showed and do not reset it when the phone "
+                + "reconnects with the same mode: the phone sees a healthy link and sends a "
+                + "picture, the monitor wakes up and stays black. The phone cannot detect this. "
+                + "Fix switches the screen to its smallest mode for a moment and then back, which "
+                + "makes the converter start over; a plain reconnect does not. If your dock needs "
+                + "it every time, turn on the switch \u2014 it costs a few seconds of flicker on each "
+                + "plug-in, so leave it off otherwise.");
+
+        mDensitySpinner = capRow(page, "UI size (dpi at 1080p)");
+        fillDensity(mDensitySpinner);
+
+        LinearLayout sizeRow = labelledRow(page, "Fine-tune per monitor in Settings");
+        Button size = new Button(this);
+        size.setText("Open");
+        size.setOnClickListener(v -> openExternalDisplaySettings());
+        sizeRow.addView(size);
+        note(page, "Text looks small or soft on a big monitor? That is the UI size, not the "
+                + "signal. Android sizes an external screen by its physical pixel density, which "
+                + "makes a 27\" 1080p monitor draw everything at about 0.7x (111 dpi); this ROM "
+                + "defaults to the DeX-like 160 dpi at 1080p instead. The value here is for a "
+                + "1080p screen and scales with resolution (1440p x1.33, 4K x2), so one choice "
+                + "fits every monitor; it is applied to a screen the first time it connects. "
+                + "The per-monitor slider in Settings > Connected devices > External displays > "
+                + "Display size overrides it for that monitor and is remembered; picking a value "
+                + "here again puts it back in charge. Auto uses the ROM default.");
+
+        LinearLayout padRow = labelledRow(page, "Use the phone as a touchpad");
+        Button pad = new Button(this);
+        pad.setText("Start");
+        pad.setOnClickListener(v -> {
+            if (TouchpadActivity.externalDisplayId(this) == android.view.Display.INVALID_DISPLAY) {
+                toast("Connect an external screen first");
+                return;
+            }
+            startActivity(new android.content.Intent(this, TouchpadActivity.class));
+        });
+        padRow.addView(pad);
+        LinearLayout monRow = labelledRow(page, "Monitor only (phone screen off, external screen stays on)");
+        Button mon = new Button(this);
+        mon.setText("Start");
+        mon.setOnClickListener(v -> {
+            if (TouchpadActivity.externalDisplayId(this) == android.view.Display.INVALID_DISPLAY) {
+                toast("Connect an external screen first");
+                return;
+            }
+            startService(new android.content.Intent(this, MonitorOnlyService.class));
+        });
+        monRow.addView(mon);
+        fillTouchpadSpeed(capRow(page, "Pointer speed"));
+        addSwitch(page, "Natural scrolling (content follows the fingers)", TouchpadActivity.PROP_NATURAL_SCROLL, true);
+        note(page, "DeX-style: the phone screen goes black and becomes a trackpad for the "
+                + "external screen, with a real mouse pointer there — for XR glasses or a TV, "
+                + "where you start a video and then never look at the phone. One finger moves, "
+                + "tap clicks, double-tap-and-hold drags, long press right-clicks, two fingers "
+                + "scroll, a three-finger tap turns the phone screen off while the external screen "
+                + "and the touchpad session stay up (power button or double-tap wakes it, unlocked). "
+                + "Back (swipe in from a side edge) leaves, as does unplugging the screen. "
+                + "Monitor only does the same phone-off trick without the touchpad; the phone wakes "
+                + "by itself if the external screen is unplugged. Both are quick-settings tiles too.");
+    }
+
+    private void fillTouchpadSpeed(Spinner sp) {
+        final String[] labels = new String[10];
+        for (int i = 0; i < 10; i++) labels[i] = (i + 1) + (i == 4 ? "  (default)" : "");
+        int cur = 5;
+        try { cur = Integer.parseInt(Prop.get(TouchpadActivity.PROP_SPEED, "5").trim()); } catch (NumberFormatException ignored) {}
+        cur = Math.max(1, Math.min(10, cur));
+        sp.setOnItemSelectedListener(null);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
+        sp.setSelection(cur - 1, false);
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(TouchpadActivity.PROP_SPEED, Integer.toString(pos + 1));
+            }
+        });
+    }
+
+    private static final int[] DENSITY_LADDER = { 120, 140, 160, 180, 200, 220, 240, 280, 320 };
+
+    private void fillDensity(Spinner sp) {
+        final String cur = Prop.get(ExternalDisplay.PROP_DENSITY, "auto");
+        int curV = 0;
+        try { if (!"auto".equals(cur)) curV = Integer.parseInt(cur.trim()); } catch (NumberFormatException ignored) {}
+        final java.util.TreeSet<Integer> set = new java.util.TreeSet<>();   // ascending, unlike union()
+        for (int v : DENSITY_LADDER) set.add(v);
+        if (curV > 0) set.add(curV);
+        final int[] all = new int[set.size()];
+        { int i = 0; for (int v : set) all[i++] = v; }
+        final String[] labels = new String[all.length + 1];
+        final String[] values = new String[all.length + 1];
+        labels[0] = "Auto (" + ExternalDisplay.DEFAULT_DENSITY_1080P + ")"; values[0] = "auto";
+        for (int i = 0; i < all.length; i++) {
+            values[i + 1] = Integer.toString(all[i]);
+            labels[i + 1] = all[i] + (all[i] == ExternalDisplay.DEFAULT_DENSITY_1080P ? "  (default)"
+                    : all[i] == 320 ? "  (2x)" : "");
+        }
+        sp.setOnItemSelectedListener(null);
+        sp.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        sp.setSelection(indexOf(values, cur), false);
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                final String want = values[pos];
+                if (want.equals(Prop.get(ExternalDisplay.PROP_DENSITY, "auto"))) return;
+                Prop.set(ExternalDisplay.PROP_DENSITY, want);
+                final int forced = ExternalDisplay.applyDensity(SettingsActivity.this, true);
+                if (forced > 0) toast(forced + " dpi on the connected screen");
+                else if ("auto".equals(want)) toast("Auto \u2014 ROM default on the connected screen");
+                else toast("Saved \u2014 applies when a screen is connected");
+            }
+        });
+    }
+
+    /** Settings' per-monitor page (display size slider, resolution, rotation). */
+    private void openExternalDisplaySettings() {
+        android.content.Intent i = new android.content.Intent(
+                "com.android.settings.EXTERNAL_DISPLAY_SETTINGS");
+        i.setPackage("com.android.settings");
+        try {
+            startActivity(i);
+        } catch (android.content.ActivityNotFoundException e) {
+            toast("External displays page not available in this Settings build");
+        }
+    }
+
+    private void kickDp() {
+        if (ExternalDisplay.kick(this)) {
+            toast("Switching modes \u2014 the picture comes back in a few seconds");
+        } else {
+            toast("No external screen with a second mode to switch to");
+        }
     }
 
     /** Resolve the caps against the attached screen and report honestly what happened. */
     private void applyDpCaps() {
         final ExternalDisplay.Result r = ExternalDisplay.apply(this, true);
         refreshDpHint(r);
+        if (r.connected) populateFromSink();
         if (!r.connected) {
             toast("Saved \u2014 applies when a screen is connected");
+        } else if (r.prefMissing) {
+            toast("This screen does not offer " + Prop.get(ExternalDisplay.PROP_RES, "")
+                    .replace("x", "\u00d7") + " \u2014 using the limits instead");
         } else if (!r.fits) {
             toast("No mode within the limits \u2014 using the screen's best instead");
         } else if (r.applied == null) {
@@ -411,13 +647,25 @@ public class SettingsActivity extends Activity {
 
     private void refreshDpHint(ExternalDisplay.Result r) {
         if (mDpHint == null) return;
-        final String base = "Caps for any external screen. Lower the RESOLUTION first \u2014 measured "
+        final String base = "Resolution lists every mode the last connected screen advertised (Auto only "
+                + "until a screen has been scanned once); pick one "
+                + "and it is used whenever a screen offers it, at the fastest rate under the refresh "
+                + "limit. The two limits are caps for ANY screen (a hub that only carries 1080p60 is a "
+                + "property of the cable, so set it once). Lower the RESOLUTION first \u2014 measured "
                 + "on this hardware, 1080p at 50 Hz and 60 Hz both run at 148.5 MHz because the "
                 + "50 Hz timing just has wider blanking, while 720p60 is half that.";
         String state = "";
         if (r != null) {
             if (!r.connected) {
-                state = "\n\nNo external screen detected right now.";
+                state = "\n\nNo external screen detected right now. Limits are applied "
+                        + (ExternalDisplay.settleMs() / 1000) + " s after a screen settles.";
+            } else if (r.applied != null && r.ladder != null && !r.ladder.isEmpty()) {
+                final ExternalDisplay.Mode best = r.ladder.get(0);
+                state = "\n\nConnected screen: " + r.ladder.size() + " modes, best "
+                        + best.label() + " \u2014 " + (r.fits
+                        ? "set to " + r.applied.label() + "."
+                        : "nothing within these limits, so its best mode is used instead rather "
+                          + "than losing the picture.");
             } else if (!r.fits) {
                 state = "\n\nThe connected screen offers nothing within these limits, so its best "
                         + "mode is used instead rather than losing the picture.";
@@ -432,7 +680,11 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (mDpHint != null) refreshDpHint(ExternalDisplay.apply(this, false));
+        if (mDpHint != null) {
+            final ExternalDisplay.Result r = ExternalDisplay.apply(this, false);
+            refreshDpHint(r);
+            if (r.connected) populateFromSink();
+        }
     }
 
     private void toast(String msg) {
@@ -469,6 +721,76 @@ public class SettingsActivity extends Activity {
 
     private static int colNamesLen(int position) {
         return (position == 3) ? COL_NAMES.length + RGB_NAMES.length : COL_NAMES.length;
+    }
+
+    // ---------- game super-resolution / frame interpolation (Qualcomm GPP) ----------
+    private static final String[] GPP_UPSCALE_NAMES = {"Off", "Moderate", "Strong"};
+
+    private void gppSection(LinearLayout root) {
+        header(root, "Super-resolution & frame interpolation (NPU)");
+        note(root, "The stock \"R4 gaming chip\" feature: Qualcomm Game Post Processing on the "
+                + "Hexagon NPU. Games render at their own resolution and frame rate; the NPU "
+                + "upscales each frame and/or generates in-between frames before the screen sees "
+                + "them. Works on the games Qualcomm lists for this chip (Genshin, Honkai, PUBG, "
+                + "CoD Mobile, Wuthering Waves, Zenless Zone Zero, … — see "
+                + "/system/etc/gpp_app_list); nothing else is touched. Experimental on this ROM: "
+                + "if a game glitches or stutters, turn it off here and it stops immediately, "
+                + "even mid-game.");
+
+        LinearLayout row = labelledRow(root, "Enable for listed games");
+        final Switch main = new Switch(this);
+        main.setChecked(Prop.getBool(GamePostProcessing.PROP_ENABLED, GamePostProcessing.DEF_ENABLED));
+        row.addView(main);
+
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setVisibility(main.isChecked() ? View.VISIBLE : View.GONE);
+        root.addView(box);
+
+        LinearLayout interpRow = labelledRow(box, "Frame interpolation");
+        Switch interp = new Switch(this);
+        interp.setChecked(Prop.getBool(GamePostProcessing.PROP_INTERP, GamePostProcessing.DEF_INTERP));
+        interp.setOnCheckedChangeListener((v, on) -> {
+            Prop.set(GamePostProcessing.PROP_INTERP, on ? "1" : "0");
+            GamePostProcessing.apply();
+        });
+        interpRow.addView(interp);
+        note(box, "Doubles the perceived frame rate by generating a frame between every two the "
+                + "game draws. Adds about one frame of input latency.");
+
+        LinearLayout upRow = labelledRow(box, "Super-resolution");
+        final Spinner up = new Spinner(this);
+        up.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                GPP_UPSCALE_NAMES));
+        up.setSelection(clamp(parseInt(Prop.get(GamePostProcessing.PROP_UPSCALE,
+                Integer.toString(GamePostProcessing.DEF_UPSCALE)), GamePostProcessing.DEF_UPSCALE), 0, 2));
+        up.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(GamePostProcessing.PROP_UPSCALE, Integer.toString(pos));
+                GamePostProcessing.apply();
+            }
+        });
+        upRow.addView(up);
+        note(box, "Lets the game render at a lower resolution and sharpens it back up on the NPU. "
+                + "Only kicks in when the game's own resolution is below 1080 x 2400.");
+
+        LinearLayout allRow = labelledRow(box, "Try it on every game");
+        Switch all = new Switch(this);
+        all.setChecked(Prop.getBool(GamePostProcessing.PROP_ALLGAME, GamePostProcessing.DEF_ALLGAME));
+        all.setOnCheckedChangeListener((v, on) -> {
+            Prop.set(GamePostProcessing.PROP_ALLGAME, on ? "1" : "0");
+            GamePostProcessing.apply();
+        });
+        allRow.addView(all);
+        note(box, "Ignores Qualcomm's list and offers post-processing to any app that draws with "
+                + "OpenGL into a SurfaceView — most games, and some video players and emulators. "
+                + "Untested titles may flicker or crash; keep this off unless you are experimenting.");
+
+        main.setOnCheckedChangeListener((v, on) -> {
+            Prop.set(GamePostProcessing.PROP_ENABLED, on ? "1" : "0");
+            box.setVisibility(on ? View.VISIBLE : View.GONE);
+            GamePostProcessing.apply();
+        });
     }
 
     private void header(LinearLayout root, String text) {
@@ -629,7 +951,10 @@ public class SettingsActivity extends Activity {
     // It provisions automatically once remote_provisioning.hostname is set (see
     // product.prop); this button is for when it has not, and to show why.
     private static final String RKP_SERVICE = "remote_provisioning";
-    private static final String RKP_IRPC = "default";
+    // rkpdapp wants the full AIDL instance name; `cmd remote_provisioning certify default`
+    // prepends the descriptor itself (RemoteProvisioningShellCommand.getRegistrationProxy).
+    private static final String RKP_IRPC =
+            "android.hardware.security.keymint.IRemotelyProvisionedComponent/default";
     // Same arbitrary key id RemoteProvisioningShellCommand uses, so this exercises the
     // identical path rather than a subtly different one.
     private static final int RKP_KEY_ID = 452436;
@@ -696,11 +1021,12 @@ public class SettingsActivity extends Activity {
                 return;
             }
             // Don't just claim it is on -- go and find out. init has to pick up the property and
-            // rkpdapp has to restart before a request can succeed, hence the delay.
+            // rkpdapp has to re-store its url (Rkp.apply waits up to 3 s for the hostname, then
+            // re-delivers BOOT_COMPLETED to it) before a request can succeed, hence the delay.
             status.setText("Turning on\u2026 asking the provisioning server for a key. "
                     + "This needs internet and takes a few seconds.");
             new android.os.Handler(android.os.Looper.getMainLooper())
-                    .postDelayed(() -> rkpCertify(status, go), 2500);
+                    .postDelayed(() -> rkpCertify(status, go), 4000);
         });
 
         go.setOnClickListener(new View.OnClickListener() {
@@ -730,7 +1056,8 @@ public class SettingsActivity extends Activity {
                                 rkpDone(status, go, n > 0
                                         ? "Working. The phone was issued an attestation key and "
                                           + "received a " + n + "-byte certificate chain, so "
-                                          + "hardware attestation is now available to apps."
+                                          + "hardware attestation is now available to apps.\n\n"
+                                          + rkpChainSummary(key.encodedCertChain)
                                         : "The server answered but returned no certificate chain "
                                           + "\u2014 press Re-provision to try again.");
                             }
@@ -781,10 +1108,68 @@ public class SettingsActivity extends Activity {
         }
     }
 
-    // The AIDL is oneway, so every callback lands on a binder thread.
+    /**
+     * The chain as people, not bytes: one line per certificate, leaf first, ending in the
+     * root -- so a reader can see for themselves that it ends at Google's Key Attestation CA
+     * rather than take "working" on trust. XDA #67 (NX123Dos): "the feature needs clear output,
+     * at least alert window, to see the result".
+     */
+    private static String rkpChainSummary(byte[] der) {
+        try {
+            final java.security.cert.CertificateFactory cf =
+                    java.security.cert.CertificateFactory.getInstance("X.509");
+            final java.util.Collection<? extends java.security.cert.Certificate> certs =
+                    cf.generateCertificates(new java.io.ByteArrayInputStream(der));
+            final StringBuilder sb = new StringBuilder("Certificate chain (" + certs.size() + "):");
+            int i = 0;
+            for (java.security.cert.Certificate c : certs) {
+                final java.security.cert.X509Certificate x = (java.security.cert.X509Certificate) c;
+                sb.append("\n  ").append(++i).append(". ")
+                        .append(rdn(x.getSubjectX500Principal().getName()));
+                sb.append("\n      issued by ")
+                        .append(rdn(x.getIssuerX500Principal().getName()));
+                sb.append(", until ")
+                        .append(java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT)
+                                .format(x.getNotAfter()));
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            return "Certificate chain could not be parsed: " + t;
+        }
+    }
+
+    /** "CN=Droid CA3,O=Google LLC,..." -> "Droid CA3 (Google LLC)". */
+    private static String rdn(String dn) {
+        String cn = null, o = null, serial = null;
+        for (String part : dn.split(",")) {
+            final String p = part.trim();
+            if (p.startsWith("CN=")) cn = p.substring(3);
+            else if (p.startsWith("O=")) o = p.substring(2);
+            else if (p.startsWith("SERIALNUMBER=") || p.startsWith("2.5.4.5=")) serial = "serial";
+        }
+        if (cn == null) cn = serial != null ? "device key (" + serial + ")" : dn;
+        return o == null ? cn : cn + " (" + o + ")";
+    }
+
+    // The AIDL is oneway, so every callback lands on a binder thread. The result also goes into
+    // a dialog: the status line under the switch is small and easy to miss.
     private void rkpDone(final TextView status, final Button go, final String msg) {
         runOnUiThread(new Runnable() {
-            public void run() { status.setText(msg); go.setEnabled(true); }
+            public void run() {
+                status.setText(msg);
+                go.setEnabled(true);
+                new android.app.AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle("Attestation keys")
+                        .setMessage(msg)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .setNeutralButton("Copy", (d, w) -> {
+                            final android.content.ClipboardManager cm =
+                                    getSystemService(android.content.ClipboardManager.class);
+                            if (cm != null) cm.setPrimaryClip(
+                                    android.content.ClipData.newPlainText("attestation", msg));
+                        })
+                        .show();
+            }
         });
     }
 
