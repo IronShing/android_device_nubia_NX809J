@@ -1,6 +1,10 @@
+# REFERENCE ONLY. Not wired into any sepolicy dir: this device ships the stock vendor, so vendor
+# .te never reaches it. The hal_audio_default rules actually ship as a CIL append to the stock
+# vendor_sepolicy.cil in ~/lineage-scratch/sign_a17_release.sh (marker ";; viper4android-nx809j").
 allow hal_audio_default shell_data_file dir { search read open getattr write add_name remove_name rename }
 allow hal_audio_default shell_data_file file { read write create open getattr setattr unlink rename map }
 allow mtk_hal_audio shell_data_file dir { search read open getattr write add_name remove_name rename }
 allow mtk_hal_audio shell_data_file file { read write create open getattr setattr unlink rename map }
+# (untrusted_app rules below are already in platform policy)
 allow untrusted_app shell_data_file dir { search read open getattr }
 allow untrusted_app shell_data_file file { read write open getattr map }

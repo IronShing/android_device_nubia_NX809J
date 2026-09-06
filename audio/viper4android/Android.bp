@@ -1,10 +1,10 @@
 // ViPER4Android RE (AIDL) — baked into the ROM (replaces the KSU module).
-// App is the +10 dB-Output-Gain rebuild (valueRange 1..316); driver is libv4a_aidl.so.
+// App is upstream 2.0.5 + the +10 dB-Output-Gain patch (range 1..316); driver is libv4a_aidl.so.
 
 android_app_import {
     name: "ViPER4Android",
     apk: "app/ViPER4Android.apk",
-    presigned: true,        // release-signed (minified/shrunk, 3.5MB, CN=NX809J V4A), +10dB Output Gain
+    presigned: true,        // 2.0.5 +10dB rebuild, minified, signed with the ROM releasekey (2026-09-04; old CN=NX809J V4A keystore lost)
     preprocessed: true,     // APK is already v2-signed+aligned; install as-is (targetSdk>=30 requires this)
     product_specific: true, // lands in /product/app/ViPER4Android
     dex_preopt: {
@@ -25,4 +25,13 @@ cc_prebuilt_library_shared {
     soc_specific: true,     // vendor partition
     relative_install_path: "soundfx",
     shared_libs: ["liblog", "libutils", "libcutils"],
+}
+
+// Creates /data/local/tmp/v4a at boot (the driver's shm directory; see the .rc). Product-side so
+// it ships with the app and the stock vendor stays untouched.
+prebuilt_etc {
+    name: "viper4android.rc",
+    src: "viper4android.rc",
+    sub_dir: "init",
+    product_specific: true,
 }

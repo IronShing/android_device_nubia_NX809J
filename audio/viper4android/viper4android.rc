@@ -1,0 +1,20 @@
+# ViPER4Android RE (AIDL) — shared-memory channel directory.
+#
+# The driver (libv4a_aidl.so, running inside hal_audio_default) hands parameters to/from the app
+# through three mmap'd files under /data/local/tmp/v4a (path hard-coded in the blob; the driver
+# creates the files but NOT the directory). Upstream's Magisk module makes the directory in its
+# service.sh; without it the effect attaches, logs "cannot open/create .../shm_status.bin", and
+# the app falls back to `su` -- i.e. on a rooted-but-unprompted or unrooted phone V4A silently
+# processes nothing. Create it from init so the channel works out of the box.
+#
+# /data/local/tmp is made by init.rc in post-fs-data (0771 shell shell, shell_data_file); this
+# runs after it. It has to run as the SHELL domain: platform policy neverallows init (and every
+# other domain except shell/adbd/installd/vold...) from creating anything under shell_data_file
+# (init.te "Init should not be creating subdirectories in /data/local/tmp", shell.te
+# no_w_dir_perms block) -- a plain `mkdir` here fails "Permission denied". init may exec
+# /system/bin/sh into u:r:shell:s0 (domain_trans(init, shell_exec, shell)), which is exactly the
+# owner of that directory. 0777 so the audio HAL (audioserver:audio) can create the files and the
+# app (untrusted_app, r/w on shell_data_file per platform policy) can mmap them. The matching
+# hal_audio_default allow rules ship in the vendor CIL (sign_a17_release.sh vendor bake).
+on post-fs-data
+    exec_background u:r:shell:s0 shell shell -- /system/bin/sh -c "mkdir -p /data/local/tmp/v4a && chmod 0777 /data/local/tmp/v4a"
