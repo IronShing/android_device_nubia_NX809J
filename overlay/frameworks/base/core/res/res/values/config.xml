@@ -160,5 +160,11 @@
          without the user hunting for the toggle. Full keeps its RRO values (RRO wins at runtime),
          which name the same package. -->
     <string name="config_systemAutomotiveProjection" translatable="false">com.google.android.projection.gearhead</string>
+
+    <!-- External display default UI size. AOSP derives it from the monitor's physical ppi so a
+         48 dp touch target is 10.4 mm: 111 dpi on a 27" 1080p monitor, everything ~0.7x and
+         unreadable. 160 at 1080p (213 at 1440p, 320 at 4K) matches DeX / Chrome OS; still
+         adjustable per monitor in Settings > Connected devices > External displays > Display size. -->
+    <integer name="config_externalDisplayBaseDensityAt1080p">160</integer>
     <string name="config_defaultListenerAccessPackages" translatable="false">com.google.android.projection.gearhead</string>
 </resources>

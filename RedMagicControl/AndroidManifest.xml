@@ -7,6 +7,13 @@
     <!-- WAKE_LOCK (normal perm): required to hold a WifiLock for the game-mode
          max-wifi boost (WifiServiceImpl.acquireWifiLock enforces WAKE_LOCK) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.DEVICE_POWER" />
+    <uses-permission android:name="android.permission.BROADCAST_CLOSE_SYSTEM_DIALOGS" />
+    <!-- UDC mask (UdcMask.java): both plain "signature" -> platform cert grants them, no
+         privapp-permissions entry needed. CAMERA_OPEN_CLOSE_LISTENER makes cameraserver deliver
+         onCameraOpened(cameraId, package); INTERNAL_SYSTEM_WINDOW allows TYPE_SECURE_SYSTEM_OVERLAY. -->
+    <uses-permission android:name="android.permission.CAMERA_OPEN_CLOSE_LISTENER" />
+    <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <!-- Desktop integration (see DesktopIntegration.java).
@@ -91,6 +98,27 @@
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
         <service android:name=".CoolingTile" android:label="@string/tile_cooling" android:icon="@drawable/ic_cooling"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <!-- Phone-as-touchpad for an external display (TouchpadActivity). Black, full screen,
+             portrait-locked so the pointer axes do not flip when the phone is held sideways. -->
+        <activity
+            android:name=".TouchpadActivity"
+            android:label="@string/touchpad_title"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
+
+        <service android:name=".TouchpadTile" android:label="@string/tile_touchpad" android:icon="@drawable/ic_touchpad"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <!-- Phone screen off, external display stays on (three-finger tap in touchpad mode or QS tile). -->
+        <service android:name=".MonitorOnlyService" android:exported="false" />
+        <service android:name=".MonitorOnlyTile" android:label="@string/tile_monitor_only" android:icon="@drawable/ic_monitor_only"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
