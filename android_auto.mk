@@ -1,5 +1,6 @@
-# Android Auto plumbing for the variants that do NOT inherit the Pixel GApps tier
-# (MinimalGApps via gms_core.mk, and microG).
+# Android Auto plumbing. Inherited when NX809J_SHIP_AA=true (evolution_NX809J.mk, policy
+# 2026-09-04): FullGApps ships it; NX809J_PERSONAL=true (dev's Minimal + Fermata Auto) ships it;
+# published Minimal and microG builds ship no Android Auto at all.
 #
 # Why this exists (found 2026-09-02): on those builds the SYSTEM_AUTOMOTIVE_PROJECTION role had
 # no holder and no gearhead package was preinstalled, so an Android Auto installed from Play /

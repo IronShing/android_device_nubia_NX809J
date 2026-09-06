@@ -97,10 +97,22 @@ PRODUCT_PACKAGES += \
     LatinIME
 endif
 
-# Android Auto for every variant: Google-signed AA 17.4 priv-app cluster (overrides the
-# vendor/gms stub that gms_full.mk lists) + role holder + allowlist. Minimal and microG have
-# nothing else providing it; Full only had the stub, which Play region-blocks for some accounts.
+# Android Auto: Google-signed AA 17.4 priv-app cluster (overrides the vendor/gms stub that
+# gms_full.mk lists) + allowlist. Policy (user decision 2026-09-04):
+#   FullGApps  -> ships it (the Google-tier variant; Play region-blocks the stub for some users)
+#   Minimal    -> no Android Auto
+#   microG     -> no Android Auto
+#   PERSONAL   -> Minimal + Android Auto (+ Fermata Auto below, YouTube on the head unit)
+NX809J_SHIP_AA := false
+ifeq ($(NX809J_MINIMAL),false)
+NX809J_SHIP_AA := true
+endif
+ifeq ($(NX809J_PERSONAL),true)
+NX809J_SHIP_AA := true
+endif
+ifeq ($(NX809J_SHIP_AA),true)
 $(call inherit-product, device/nubia/NX809J/android_auto.mk)
+endif
 
 # Device identifiers
 PRODUCT_NAME := evolution_NX809J
