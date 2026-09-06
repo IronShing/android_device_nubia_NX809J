@@ -16,6 +16,9 @@ set_prop(system_app, rm_ctrl_prop)
 # that list -- adding the rule fails the build at the neverallow check, it is not merely denied.
 # So the app writes persist.sys.rm.rkp (rm_ctrl_prop, granted above) and init does the privileged
 # setprops from rkp.rc. Same shape as the dt2w arming bridge.
+# Reading it back is allowed (the neverallow covers set only): the app waits for init to have
+# applied the hostname before it tells rkpdapp to re-read it, else rkpdapp stores the stale value.
+get_prop(system_app, remote_prov_prop)
 
 # External-display fixed refresh: the app writes /sys/kernel/lcd_enhance/edid_modes.
 # The rule CANNOT live here -- that node is labelled sysfs_usb_ctrl, a VENDOR-only type that

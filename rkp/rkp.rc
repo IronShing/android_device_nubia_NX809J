@@ -12,8 +12,9 @@
 # back to default_prop. Verified on hardware 2026-09-01 that RKP provisions a full Google-rooted
 # chain without it -- the real gate is the device_config flag, which the app sets.
 #
-# rkpdapp caches the hostname at process start, so the app restarts it after toggling; without
-# that it keeps reporting "no default URL" no matter what these properties say.
+# rkpdapp only reads the hostname in its BootReceiver (Settings.resetDefaultConfig stores it as
+# the "url" pref it actually uses), so after toggling the app re-delivers BOOT_COMPLETED to
+# rkpdapp; without that it keeps reporting "no default URL" no matter what these properties say.
 
 on property:persist.sys.rm.rkp=1
     setprop remote_provisioning.hostname remoteprovisioning.grapheneos.org

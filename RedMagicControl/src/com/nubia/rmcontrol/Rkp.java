@@ -1,6 +1,6 @@
 package com.nubia.rmcontrol;
 
-import android.app.ActivityManager;
+import android.content.Intent;
 import android.content.Context;
 import android.provider.DeviceConfig;
 import android.util.Log;
@@ -19,10 +19,21 @@ import android.util.Log;
  * Google-rooted chain (TEE key -> Droid CA3 -> Droid CA2 -> Key Attestation CA1). Verified
  * end-to-end on hardware 2026-09-01.
  *
- * THE NON-OBVIOUS PART. rkpdapp reads remote_provisioning.hostname ONCE at process start. Setting the
- * property while it is running changes nothing and it keeps reporting "no default URL" -- which
- * is exactly why an earlier investigation concluded the TEE was broken and RKP unreachable. The
- * app must be restarted after the property changes; {@link #kickRkpd} does that.
+ * THE NON-OBVIOUS PART. rkpdapp does NOT read remote_provisioning.hostname when it serves a
+ * request: it reads a SharedPreferences entry "url" (Settings.getUrl), and that entry is written
+ * only by Settings.resetDefaultConfig -- from BootReceiver on BOOT_COMPLETED, and from a few
+ * server-error paths that a request never reaches while the URL is empty
+ * (RemoteProvisioningService.java:63 refuses first). So a device that booted with the hostname
+ * unset has "url" stored EMPTY, and setting the hostname afterwards changes nothing: every request
+ * keeps failing with "RKP is disabled. System configured with no default URL." until the next
+ * boot. Restarting rkpdapp does not help either (the pref is on disk). That is exactly why an
+ * earlier investigation concluded the TEE was broken and RKP unreachable.
+ *
+ * The fix is to make rkpdapp run resetDefaultConfig again once the hostname is in place: this
+ * app is android.uid.system, so it may send the protected BOOT_COMPLETED broadcast, and
+ * targeting it at rkpdapp alone re-runs its BootReceiver (reset url + re-enqueue the daily job)
+ * without waking anything else. Verified on hardware 2026-09-04: the stored url went from ""
+ * to https://remoteprovisioning.grapheneos.org/v1 and the request went through.
  *
  * WHY NOT remote_provisioning.enable_rkpd: it has no exact SELinux context and falls back to
  * default_prop, which nothing here should be allowed to write wholesale. Tested on hardware
@@ -52,17 +63,8 @@ final class Rkp {
         return Prop.getBool(PROP_ENABLED, false);
     }
 
-    /**
-     * Re-assert the user's choice at boot. init already re-fires the rkp.rc trigger from the
-     * persisted property, so this only needs to run when RKP is ON -- and then only to make sure
-     * rkpdapp starts life with the hostname already set. Doing nothing when off avoids killing
-     * rkpdapp on every boot for no reason.
-     */
-    static void reapply(Context ctx) {
-        if (!isEnabled()) return;
-        new android.os.Handler(android.os.Looper.getMainLooper())
-                .postDelayed(() -> kickRkpd(ctx), 4000);
-    }
+    // Nothing to do at boot: init re-fires rkp.rc from the persisted property long before
+    // BOOT_COMPLETED, so rkpdapp's own BootReceiver already stores the right url.
 
     static void apply(Context ctx, boolean on) {
         // Writing our own property is all the app may do: init picks it up from rkp.rc and does
@@ -76,25 +78,40 @@ final class Rkp {
             Log.e(TAG, "RKP: device_config " + DC_KEY + " failed", t);
         }
 
-        // init handles the property trigger asynchronously; give it a moment so rkpdapp restarts
-        // after the hostname is actually in place rather than before.
-        new android.os.Handler(android.os.Looper.getMainLooper())
-                .postDelayed(() -> kickRkpd(ctx), 400);
+        // init handles the property trigger asynchronously; wait for the hostname to reflect the
+        // choice before telling rkpdapp to re-read it, else it stores the old value again.
+        resyncWhenSettled(ctx, on, 0);
         Log.i(TAG, "RKP " + (on ? "enabled" : "disabled"));
     }
 
+    private static final String PROP_HOSTNAME = "remote_provisioning.hostname";
+    private static final int RESYNC_POLL_MS = 100;
+    private static final int RESYNC_MAX_POLLS = 30;
+
+    private static void resyncWhenSettled(Context ctx, boolean on, int polls) {
+        final boolean settled = Prop.get(PROP_HOSTNAME, "").isEmpty() != on;
+        if (settled || polls >= RESYNC_MAX_POLLS) {
+            if (!settled) Log.w(TAG, "RKP: hostname not visible after " + polls + " polls; resyncing anyway");
+            resyncRkpd(ctx);
+            return;
+        }
+        new android.os.Handler(android.os.Looper.getMainLooper())
+                .postDelayed(() -> resyncWhenSettled(ctx, on, polls + 1), RESYNC_POLL_MS);
+    }
+
     /**
-     * Restart rkpdapp so it re-reads the hostname. Uses killBackgroundProcesses (a NORMAL
-     * permission) rather than forceStopPackage: FORCE_STOP_PACKAGES is signature|privileged and
-     * would need a privapp-permissions entry, and a missing entry there boot-loops the device
-     * under ro.control_privapp_permissions=enforce.
+     * Make rkpdapp store the current hostname as its url (Settings.resetDefaultConfig) by
+     * re-delivering BOOT_COMPLETED to it alone. BOOT_COMPLETED is a protected broadcast, which
+     * only the system uid may send -- and this app is the system uid. The receiver is
+     * exported=false; an explicit package target from the same uid still reaches it.
      */
-    private static void kickRkpd(Context ctx) {
+    private static void resyncRkpd(Context ctx) {
         try {
-            final ActivityManager am = ctx.getSystemService(ActivityManager.class);
-            if (am != null) am.killBackgroundProcesses(RKPD_PKG);
+            final Intent i = new Intent(Intent.ACTION_BOOT_COMPLETED).setPackage(RKPD_PKG);
+            ctx.sendBroadcast(i);
+            Log.i(TAG, "RKP: re-delivered BOOT_COMPLETED to " + RKPD_PKG);
         } catch (Throwable t) {
-            Log.w(TAG, "RKP: could not restart " + RKPD_PKG + "; a reboot will apply it", t);
+            Log.w(TAG, "RKP: could not resync " + RKPD_PKG + "; a reboot will apply it", t);
         }
     }
 
