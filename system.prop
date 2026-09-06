@@ -3,12 +3,8 @@
 
 # TODO: Populate from system/build.prop after extraction
 
-# --- A17 SPIKE: debug build only. NEVER ship. ---
-# /system/build.prop is loaded BEFORE /vendor/build.prop and ro.* props are
-# first-writer-wins, so setting these here also wins if this build is flashed over a
-# STOCK or hybrid /vendor (whose vendor.prop we do not control).
-ro.adb.secure=0
-persist.sys.usb.config=adb
+# ro.adb.secure=0 / persist.sys.usb.config=adb used to live here unconditionally; they are
+# now gated behind NX809J_TEST_ADB in device.mk (2026-09-06).
 # Fold the kernel ring buffer into logcat so a vendor/HAL crash and its kernel context
 # land in one timeline, and persist logs across a bootloop.
 ro.logd.kernel=true

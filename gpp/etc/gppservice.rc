@@ -1,0 +1,11 @@
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# All rights reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+
+service vendor.gppservice /system/bin/gppservice
+    class main
+    user system
+    group system
+

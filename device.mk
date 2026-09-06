@@ -439,6 +439,9 @@ include $(LOCAL_PATH)/firmware_pcf.mk
 include $(LOCAL_PATH)/vendor_hals.mk
 include $(LOCAL_PATH)/vendor_source_extras.mk
 
+# Qualcomm GPP (NPU super-resolution / frame interpolation for games)
+include $(LOCAL_PATH)/gpp.mk
+
 
 # Overlays — see the desktop-mode block above. The framework-res overlay is now a
 # static PRODUCT_PACKAGE_OVERLAYS (baked into framework-res.apk in system), replacing
@@ -685,6 +688,14 @@ PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/testadb/adb_keys:$(TARGET_COPY_OUT_PRODUCT)/etc/security/adb_keys
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/testadb/00-testadb.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/00-testadb.rc
+# Moved here from system.prop (2026-09-06), where they were unconditional and so shipped in
+# every public build. They were inert there only because ro.debuggable=0 and the ABL reports
+# verifiedbootstate=green (adbd skips auth only when debuggable OR "orange"): one different
+# ABL and every user would have had unauthenticated adb. /system/build.prop loads before
+# /system_ext/build.prop and ro.* is first-writer-wins, so this still beats Lineage's =1.
+PRODUCT_SYSTEM_PROPERTIES += \
+    ro.adb.secure=0 \
+    persist.sys.usb.config=adb
 endif
 
 # Personal (developer's own phone) extras on top of Minimal, 2026-09-03:
@@ -695,10 +706,18 @@ endif
 # because that flag is about the adb key, and a personal build must still be flashable
 # through flash_super_dev.sh when it has no key baked. Requires GMS (Velvet is useless on
 # microG), so it is a no-op there.
+# 2026-09-04: PERSONAL also = Minimal + Android Auto (android_auto.mk, gated in
+# evolution_NX809J.mk) + Fermata Auto (prebuilt/FermataAuto, YouTube on the head unit).
 ifeq ($(NX809J_PERSONAL),true)
 ifneq ($(NX809J_MICROG),true)
 PRODUCT_PACKAGES += \
     Velvet
 PRODUCT_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay-personal
+ifneq ($(wildcard device/nubia/NX809J/prebuilt/FermataAuto/FermataAuto.apk),)
+PRODUCT_PACKAGES += \
+    FermataAuto
+else
+$(warning NX809J: prebuilt/FermataAuto/FermataAuto.apk absent - personal build without Fermata Auto)
+endif
 endif
 endif
