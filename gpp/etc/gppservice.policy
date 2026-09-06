@@ -77,3 +77,8 @@ sched_get_priority_max: 1
 # NX809J: A17 libbinder/libutils call uname() at startup; the QSSI16 policy lacks it and
 # the service died with SIGSYS on every start (strace: si_syscall=__NR_uname).
 uname: 1
+# NX809J: first HexLP session creation dies with "blocked syscall: clock_gettime" (a clock id
+# the arm64 vDSO cannot serve falls back to the real syscall). Time syscalls are harmless.
+clock_gettime: 1
+clock_getres: 1
+gettimeofday: 1
