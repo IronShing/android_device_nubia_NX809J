@@ -811,7 +811,10 @@ public class SettingsActivity extends Activity {
         });
     }
 
-    /** Qualcomm's allowlist as a dialog: store names first, Chinese-store builds by package. */
+    /**
+     * Qualcomm's allowlist as a searchable dialog: store names first, Chinese-store builds by
+     * package. The filter matches the visible text, so "genshin", "miHoYo" or "upscale" all work.
+     */
     private void showGppList(java.util.List<GamePostProcessing.Entry> list) {
         final java.util.List<String> named = new java.util.ArrayList<>();
         final java.util.List<String> other = new java.util.ArrayList<>();
@@ -820,32 +823,73 @@ public class SettingsActivity extends Activity {
             final String known = GamePostProcessing.knownName(e.pkg);
             final String fx = (e.interp ? "frames" : "") + (e.interp && e.upscale > 0 ? " + " : "")
                     + (e.upscale > 0 ? (e.upscale == 2 ? "strong upscale" : "upscale") : "");
-            final String tag = (installed != null ? " \u2713 installed" : "")
-                    + (fx.isEmpty() ? "" : " [" + fx + "]");
-            if (known != null) named.add(known + tag);
-            else if (installed != null) named.add(installed + " (" + e.pkg + ")" + tag);
+            final String tag = (installed != null ? "  \u2713 installed" : "")
+                    + (fx.isEmpty() ? "" : "  [" + fx + "]");
+            // Package always present so a search by package name hits too.
+            if (known != null) named.add(known + tag + "\n" + e.pkg);
+            else if (installed != null) named.add(installed + tag + "\n" + e.pkg);
             else other.add(e.pkg + tag);
         }
         java.util.Collections.sort(named, String.CASE_INSENSITIVE_ORDER);
         java.util.Collections.sort(other, String.CASE_INSENSITIVE_ORDER);
+        final java.util.List<String> all = new java.util.ArrayList<>(named);
+        all.addAll(other);
+
+        final int pad = dp(16);
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(8), pad, 0);
+
+        final TextView intro = new TextView(this);
+        intro.setText("Qualcomm's list for this chip. Per game: in-between frames, upscale, or "
+                + "both. " + named.size() + " store titles first, then " + other.size()
+                + " Chinese-store builds by package.");
+        intro.setTextSize(13);
+        box.addView(intro);
+
+        final android.widget.EditText search = new android.widget.EditText(this);
+        search.setHint("Search name or package");
+        search.setSingleLine(true);
+        search.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.addView(search);
+
+        final ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1, new java.util.ArrayList<>(all));
+        final android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setAdapter(adapter);
+        lv.setTextFilterEnabled(false);
+        // Fixed height: a weight-1 child collapses inside a wrap-content dialog.
+        box.addView(lv, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(420)));
+
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            public void afterTextChanged(android.text.Editable ed) {
+                final String q = ed.toString().trim().toLowerCase(java.util.Locale.ROOT);
+                adapter.clear();
+                for (String row : all) {
+                    if (q.isEmpty() || row.toLowerCase(java.util.Locale.ROOT).contains(q)) {
+                        adapter.add(row);
+                    }
+                }
+                adapter.notifyDataSetChanged();
+            }
+        });
+
         final StringBuilder sb = new StringBuilder();
-        sb.append("Qualcomm's list for this chip (/system/etc/gpp_app_list). Per game it says "
-                + "what the NPU may do: generate in-between frames, upscale, or both.\n\n");
-        for (String n : named) sb.append("\u2022 ").append(n).append('\n');
-        if (!other.isEmpty()) {
-            sb.append("\nChinese-store builds (").append(other.size()).append("):\n");
-            for (String n : other) sb.append("\u2022 ").append(n).append('\n');
-        }
-        final String msg = sb.toString();
+        for (String n : all) sb.append(n.replace('\n', ' ')).append('\n');
+        final String plain = sb.toString();
         new android.app.AlertDialog.Builder(this)
                 .setTitle("Supported games (" + list.size() + ")")
-                .setMessage(msg)
+                .setView(box)
                 .setPositiveButton(android.R.string.ok, null)
-                .setNeutralButton("Copy", (d, w) -> {
+                .setNeutralButton("Copy all", (d, w) -> {
                     final android.content.ClipboardManager cm =
                             getSystemService(android.content.ClipboardManager.class);
                     if (cm != null) cm.setPrimaryClip(
-                            android.content.ClipData.newPlainText("gpp games", msg));
+                            android.content.ClipData.newPlainText("gpp games", plain));
                 })
                 .show();
     }
