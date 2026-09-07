@@ -742,6 +742,21 @@ public class SettingsActivity extends Activity {
         main.setChecked(Prop.getBool(GamePostProcessing.PROP_ENABLED, GamePostProcessing.DEF_ENABLED));
         row.addView(main);
 
+        // Which of Qualcomm's games this phone actually has, so the switch is not a mystery.
+        final java.util.List<GamePostProcessing.Entry> list = GamePostProcessing.readAppList();
+        final java.util.List<String> have = GamePostProcessing.installedListedGames(this);
+        if (have.isEmpty()) {
+            note(root, "None of the supported games is installed right now; the switch will do "
+                    + "nothing until one is.");
+        } else {
+            note(root, "Supported and installed on this phone: " + String.join(", ", have) + ".");
+        }
+        LinearLayout listRow = labelledRow(root, "All supported games");
+        Button show = new Button(this);
+        show.setText("Show " + list.size());
+        show.setOnClickListener(v -> showGppList(list));
+        listRow.addView(show);
+
         final LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setVisibility(main.isChecked() ? View.VISIBLE : View.GONE);
@@ -784,13 +799,55 @@ public class SettingsActivity extends Activity {
         allRow.addView(all);
         note(box, "Ignores Qualcomm's list and offers post-processing to any app that draws with "
                 + "OpenGL into a SurfaceView — most games, and some video players and emulators. "
-                + "Untested titles may flicker or crash; keep this off unless you are experimenting.");
+                + "Untested titles may flicker or crash. It only helps a game that runs below "
+                + "your screen's refresh rate (a 30 or 60 fps cap becomes 60 or 120); a game "
+                + "that already hits 120 fps gains nothing and just pays the NPU's extra "
+                + "~0.25 W. Keep this off unless you are experimenting.");
 
         main.setOnCheckedChangeListener((v, on) -> {
             Prop.set(GamePostProcessing.PROP_ENABLED, on ? "1" : "0");
             box.setVisibility(on ? View.VISIBLE : View.GONE);
             GamePostProcessing.apply();
         });
+    }
+
+    /** Qualcomm's allowlist as a dialog: store names first, Chinese-store builds by package. */
+    private void showGppList(java.util.List<GamePostProcessing.Entry> list) {
+        final java.util.List<String> named = new java.util.ArrayList<>();
+        final java.util.List<String> other = new java.util.ArrayList<>();
+        for (GamePostProcessing.Entry e : list) {
+            final String installed = GamePostProcessing.installedLabel(this, e.pkg);
+            final String known = GamePostProcessing.knownName(e.pkg);
+            final String fx = (e.interp ? "frames" : "") + (e.interp && e.upscale > 0 ? " + " : "")
+                    + (e.upscale > 0 ? (e.upscale == 2 ? "strong upscale" : "upscale") : "");
+            final String tag = (installed != null ? " \u2713 installed" : "")
+                    + (fx.isEmpty() ? "" : " [" + fx + "]");
+            if (known != null) named.add(known + tag);
+            else if (installed != null) named.add(installed + " (" + e.pkg + ")" + tag);
+            else other.add(e.pkg + tag);
+        }
+        java.util.Collections.sort(named, String.CASE_INSENSITIVE_ORDER);
+        java.util.Collections.sort(other, String.CASE_INSENSITIVE_ORDER);
+        final StringBuilder sb = new StringBuilder();
+        sb.append("Qualcomm's list for this chip (/system/etc/gpp_app_list). Per game it says "
+                + "what the NPU may do: generate in-between frames, upscale, or both.\n\n");
+        for (String n : named) sb.append("\u2022 ").append(n).append('\n');
+        if (!other.isEmpty()) {
+            sb.append("\nChinese-store builds (").append(other.size()).append("):\n");
+            for (String n : other) sb.append("\u2022 ").append(n).append('\n');
+        }
+        final String msg = sb.toString();
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Supported games (" + list.size() + ")")
+                .setMessage(msg)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton("Copy", (d, w) -> {
+                    final android.content.ClipboardManager cm =
+                            getSystemService(android.content.ClipboardManager.class);
+                    if (cm != null) cm.setPrimaryClip(
+                            android.content.ClipData.newPlainText("gpp games", msg));
+                })
+                .show();
     }
 
     private void header(LinearLayout root, String text) {
