@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Power-off alarm</string>
+    <string name="perm_label">set alarms that power the phone on</string>
+    <string name="perm_desc">Allows the app to program the hardware clock so an alarm can switch the phone on when it is powered off.</string>
+</resources>

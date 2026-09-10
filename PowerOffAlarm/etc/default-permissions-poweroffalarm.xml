@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Pre-grant DeskClock the runtime permission that guards PowerOffAlarm's receiver
+     (org.codeaurora.permission.POWER_OFF_ALARM is "dangerous", exactly as on stock). Without
+     this, DeskClock pops a "Allow Clock to set power-off alarms?" dialog the first time it is
+     opened after an update; with it, the alarm-boot path just works. fixed="false" so the
+     user can still revoke it in Settings.
+-->
+<exceptions>
+    <exception package="com.android.deskclock">
+        <permission name="org.codeaurora.permission.POWER_OFF_ALARM" fixed="false"/>
+    </exception>
+</exceptions>

@@ -1,0 +1,18 @@
+#
+# Copyright (c) 2019-2021 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# NX809J: 32-bit wfdservice entries dropped (binary never shipped; only wfdservice64 exists).
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+service wfdservice64 /system_ext/bin/wfdservice64
+    class main
+    user system
+    disabled
+    oneshot
+
+on property:vendor.wfdservice64=enable
+    start wfdservice64
+
+
+on property:vendor.wfdservice64=disable
+    stop wfdservice64

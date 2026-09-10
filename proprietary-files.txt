@@ -264,7 +264,6 @@ vendor/etc/init/vendor.qti.hardware.wifi.wifilearner@1.0-service.rc
 vendor/etc/init/vendor.qti.media.c2@1.0-service.rc
 vendor/etc/init/vendor.qti.media.c2audio@1.0-service.rc
 vendor/etc/init/vendor.qti.psiclient@1.0-service.rc
-vendor/etc/init/vendor.qti.qspmhal-service.rc
 vendor/etc/init/vendor.qti.rmt_storage.rc
 vendor/etc/init/vendor.qti.smp2p.rc
 vendor/etc/init/vendor.qti.syshealthmon-service.rc
@@ -372,7 +371,6 @@ vendor/etc/vintf/manifest/vendor.qti.hardware.trustedui-aidl-service.xml
 vendor/etc/vintf/manifest/vendor.qti.hardware.wifidisplaysession-service.xml
 vendor/etc/vintf/manifest/vendor.qti.ims.factoryaidlservice.xml
 vendor/etc/vintf/manifest/vendor.qti.qccvndhal_aidl-service.xml
-vendor/etc/vintf/manifest/vendor.qti.qspmhal-service.xml
 vendor/etc/vintf/manifest/vendor.qti.syshealthmon-service.xml
 vendor/etc/vintf/manifest/vendor.zte.nook.modem-manifest-ds.xml
 vendor/etc/vintf/manifest/vendor.zte.radio-manifest-ds.xml
@@ -457,7 +455,6 @@ vendor/etc/seccomp_policy/qsap_dcfd.policy
 vendor/etc/seccomp_policy/qsap_mpamsvc.policy
 vendor/etc/seccomp_policy/qsap_qapeservice.policy
 vendor/etc/seccomp_policy/qsap_sensors.policy
-vendor/etc/seccomp_policy/qspm.policy
 vendor/etc/seccomp_policy/qti-systemd.policy
 vendor/etc/seccomp_policy/qwesd@2.0.policy
 vendor/etc/seccomp_policy/syshealthmon.policy
@@ -1457,7 +1454,6 @@ vendor/lib64/vendor.qti.qesdhalaidl-V2-ndk.so
 vendor/lib64/vendor.qti.qesdsys-V3-ndk.so
 vendor/lib64/vendor.qti.qesdsys-V4-ndk.so
 vendor/lib64/vendor.qti.qspmhal-V1-ndk.so
-vendor/lib64/vendor.qti.qspmhal-impl.so
 vendor/lib64/vendor.qti.qvirt-V2-ndk.so
 vendor/lib64/vendor.qti.snapdragonServices-V1-ndk.so
 vendor/lib64/vendor.qti.snapdragonServices-V2-ndk.so
@@ -1915,7 +1911,6 @@ vendor/bin/trusteduilistener
 vendor/bin/ubwcconvert
 vendor/bin/variantid
 vendor/bin/vendor.dpmd
-vendor/bin/vendor.qti.qspmhal-service
 vendor/bin/vendor.qti.syshealthmon-service
 vendor/bin/vendor_cmd_tool
 vendor/bin/vendor_modprobe.sh

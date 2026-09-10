@@ -325,6 +325,18 @@ OVERRIDES_PATHS = {
 # Per-PATH exclusions where basename matching is ambiguous (e.g. generic
 # binary names). Format: full relative path from proprietary/.
 EXCLUDE_PATHS = {
+    # QSPM (Qualcomm System Performance Manager) HAL: sets per-app perf hints for
+    # ActivityTrigger/libqti-at (system side, absent on this ROM -- NO-GO 2026-09-07,
+    # vendor tables are a CN app list). Always-on class hal, 7 MB RSS. The two CLIENT libs
+    # (vendor.qti.qspmhal-V1-ndk, libqspm-mem-utils-vendor) are KEPT: libadreno_app_profiles.so
+    # (dlopen'd by the Adreno GL/Vulkan drivers) DT_NEEDs them; with the VINTF fragment gone
+    # its AServiceManager_isDeclared() check fails and it bails out cleanly (verified in disasm).
+    'vendor/bin/vendor.qti.qspmhal-service',
+    'vendor/etc/init/vendor.qti.qspmhal-service.rc',
+    'vendor/etc/vintf/manifest/vendor.qti.qspmhal-service.xml',
+    'vendor/etc/seccomp_policy/qspm.policy',
+    'vendor/lib64/vendor.qti.qspmhal-impl.so',
+
     # qprof: Qualcomm profiler binary. Lives at vendor/bin/qprof and
     # references libQualcommProfiler*.so / libProfileCMetaSharedLib.so
     # which are in vendor/qprof/libs/. extract-utils doesn't emit

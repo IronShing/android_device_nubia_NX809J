@@ -1,0 +1,18 @@
+// Qualcomm Wi-Fi Display (Miracast) source service, stock RedMagic OS 11.0.18 /system_ext.
+// See ../wfd.mk. Re-signed with the platform certificate on purpose: its
+// CAPTURE_VIDEO_OUTPUT / ACCESS_SURFACE_FLINGER / INJECT_EVENTS uses-permissions are
+// signature-level, the seapp_contexts entry (device/qcom/sepolicy generic:
+// com.qualcomm.wfd.service -> vendor_wfd_app) requires seinfo=platform, and the QC_WFD
+// permission it declares must be grantable to system_server, which binds to it.
+android_app_import {
+    name: "WfdService",
+    apk: "app/WfdService.apk",
+    certificate: "platform",
+    privileged: true,
+    system_ext_specific: true,
+    dex_preopt: {
+        enabled: false,
+    },
+    // JNI (libwfdnative.so) is loaded from /system_ext/lib64 (copied by wfd.mk), not from the apk.
+    skip_preprocessed_apk_checks: true,
+}

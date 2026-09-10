@@ -31,6 +31,27 @@ PRODUCT_COPY_FILES += \
     $(IMS_BLOBS)/lib64/libimsmedia_jni.so:$(SE)/lib64/libimsmedia_jni.so \
     $(IMS_BLOBS)/lib64/libimscamera_jni.so:$(SE)/lib64/libimscamera_jni.so
 
+# IMS VIDEO calling (ViLTE/VT) — orphan-audit fix 2026-09-07. libimsmedia_jni.so
+# dlopen()s lib-imsvt.so at VT media init; until now that lib was absent, so the
+# vendor VT/ImsRtpService stack had no system-side client and video calls could
+# never set up media (voice VoLTE unaffected). lib-imsvt chain from stock .18
+# system_ext/lib64 (+ vendor.qti.diaghal-V1-ndk from stock system/lib64): the
+# four VT libs, the ImsRtpService client stubs it links, and libdiag_system with
+# its diaghal stubs. Closure verified against our system/system_ext/apex libs.
+# The ims app (vendor_qtelephony) is already a vendor_hal_imsrtphal_client in the
+# stock vendor CIL, so no new sepolicy is expected — verify with denials on VT.
+PRODUCT_COPY_FILES += \
+    $(IMS_BLOBS)/lib64/lib-imsvt.so:$(SE)/lib64/lib-imsvt.so \
+    $(IMS_BLOBS)/lib64/lib-imsvideocodec.so:$(SE)/lib64/lib-imsvideocodec.so \
+    $(IMS_BLOBS)/lib64/lib-imsvtutils.so:$(SE)/lib64/lib-imsvtutils.so \
+    $(IMS_BLOBS)/lib64/lib-imsvtextutils.so:$(SE)/lib64/lib-imsvtextutils.so \
+    $(IMS_BLOBS)/lib64/vendor.qti.imsrtpservice@3.0.so:$(SE)/lib64/vendor.qti.imsrtpservice@3.0.so \
+    $(IMS_BLOBS)/lib64/vendor.qti.imsrtpservice@3.1.so:$(SE)/lib64/vendor.qti.imsrtpservice@3.1.so \
+    $(IMS_BLOBS)/lib64/vendor.qti.ImsRtpService-V2-ndk.so:$(SE)/lib64/vendor.qti.ImsRtpService-V2-ndk.so \
+    $(IMS_BLOBS)/lib64/libdiag_system.so:$(SE)/lib64/libdiag_system.so \
+    $(IMS_BLOBS)/lib64/vendor.qti.diaghal@1.0.so:$(SE)/lib64/vendor.qti.diaghal@1.0.so \
+    $(IMS_BLOBS)/lib64/vendor.qti.diaghal-V1-ndk.so:$(SE)/lib64/vendor.qti.diaghal-V1-ndk.so
+
 # The grafted QTI IMS/RCS apps declare many <uses-library vendor.qti.ims.*-java>
 # (vendor runtime shared libs not modeled in the build system), which trips
 # soong's enforce_uses_libraries manifest check. Relax it product-wide — these

@@ -1,0 +1,35 @@
+// Power-off alarm bridge (orphan-audit fix 2026-09-07).
+//
+// The stock vendor already ships everything below the framework: the AIDL
+// vendor.qti.hardware.alarm.IAlarm/default HAL (programs the PMIC RTC alarm) and
+// /vendor/bin/power_off_alarm (charger-mode watcher that reboots when the alarm
+// hits). What was missing is the system-side client Qualcomm ships as the
+// proprietary PowerOffAlarm.apk. This is a from-source re-implementation of that
+// tiny app: it speaks the same broadcast protocol DeskClock already uses
+// (org.codeaurora.poweroffalarm.action.SET_ALARM / CANCEL_ALARM, extra "time"),
+// keeps the same package name so the existing seapp_contexts line
+// (com.qualcomm.qti.poweroffalarm -> vendor_qti_poweroffalarm_app, seinfo=platform)
+// and DeskClock's setPackage() target both apply, and re-declares the permission
+// DeskClock requests (org.codeaurora.permission.POWER_OFF_ALARM).
+//
+// The AIDL under aidl/ is hand-written from the HAL's ABI: method order is the
+// transaction order (cancelAlarm=1, getAlarm=2, getRtcTime=3, setAlarm=4), so it
+// must stay alphabetical exactly as declared. Unstable local AIDL is fine here:
+// the generated proxy never checks the interface hash.
+android_app {
+    name: "PowerOffAlarm",
+    srcs: [
+        "src/**/*.java",
+        "aidl/**/*.aidl",
+    ],
+    aidl: {
+        local_include_dirs: ["aidl"],
+    },
+    resource_dirs: ["res"],
+    manifest: "AndroidManifest.xml",
+    platform_apis: true,
+    certificate: "platform",
+    system_ext_specific: true,
+    optimize: { enabled: false },
+    dex_preopt: { enabled: false },
+}

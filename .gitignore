@@ -20,6 +20,8 @@ RULE2_REFINED.md
 
 # IMS/VoLTE graft APKs are committed in-tree (self-contained graft)
 !ims/blobs/**/*.apk
+# Miracast graft: stock WfdService.apk is part of the self-contained wfd/ blob set
+!wfd/app/*.apk
 
 # per-build / personal inputs — never publish
 testadb/
