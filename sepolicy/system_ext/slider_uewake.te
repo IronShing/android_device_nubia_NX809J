@@ -23,3 +23,16 @@ set_prop(slider_uewake, rm_ctrl_prop)
 # labelled uhid_device; fp_uewake uses the same access for its KEY_WAKEUP injector. Only needed
 # for the key-code slider action -- the daemon opens nothing unless that mode is selected.
 allow slider_uewake uhid_device:chr_file { open read write ioctl };
+
+# --- Screen-off delivery (torch did nothing until the display woke) -------------------------
+# The slider GPIO is a wakeup source, so the kernel and this daemon see a slide while the SoC
+# is suspended -- but a property write wakes nobody, and the SoC was back asleep before the
+# app's next poll. Two additions:
+#  1. a timed kernel wake lock per slide (/sys/power/wake_lock; CAP_BLOCK_SUSPEND via the rc
+#     "capabilities BLOCK_SUSPEND" line). wakelock_use() also grants the SystemSuspend binder
+#     path, which this daemon does not use -- harmless.
+wakelock_use(slider_uewake)
+#  2. an init-created push socket (/dev/socket/slider_uewake, rc "socket" line) that
+#     RedMagicControl blocks on, so a slide wakes its reader thread with no polling.
+type slider_uewake_socket, file_type, coredomain_socket, mlstrustedobject;
+allow slider_uewake self:unix_stream_socket { listen accept read write getopt setopt shutdown };

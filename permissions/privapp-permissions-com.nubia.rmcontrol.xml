@@ -21,5 +21,7 @@
         <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
         <permission name="android.permission.INTERACT_ACROSS_USERS"/>
         <permission name="android.permission.CHANGE_OVERLAY_PACKAGES"/>
+        <!-- Privacy guard: rejected camera/mic/location attempts -> "Allow for 10 min" notification -->
+        <permission name="android.permission.WATCH_APPOPS"/>
     </privapp-permissions>
 </permissions>

@@ -5,7 +5,7 @@
 cc_binary {
     name: "slider_uewake",
     srcs: ["slider_uewake.c"],
-    shared_libs: ["liblog"],
+    shared_libs: ["liblog", "libcutils"],
     cflags: ["-Wall", "-Werror"],
     init_rc: ["slider_uewake.rc"],
     system_ext_specific: true,

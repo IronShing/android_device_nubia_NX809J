@@ -76,6 +76,7 @@ public class SettingsActivity extends Activity {
         LinearLayout controls = newPage(pad);
         LinearLayout audio    = newPage(pad);
         LinearLayout display  = newPage(pad);
+        LinearLayout privacy  = newPage(pad);
         LinearLayout system   = newPage(pad);
 
         // ---- Cooling ----
@@ -119,6 +120,21 @@ public class SettingsActivity extends Activity {
         ledZone(lighting, "Logo", "persist.sys.rm.led.logo", 1);
         ledZone(lighting, "Shoulder strip", "persist.sys.rm.led.shoulder", 2);
         ledZone(lighting, "Fan ring", "persist.sys.rm.led.fan", 3);
+        // Sleeping: nothing may glow, the auto-fan ring included.
+        {
+            LinearLayout row = labelledRow(lighting, "All lights off during Do Not Disturb");
+            Switch sw = new Switch(this);
+            sw.setChecked(Prop.getBool(QuietLights.PROP_ENABLED, true));
+            sw.setOnCheckedChangeListener((v, on) -> {
+                Prop.set(QuietLights.PROP_ENABLED, on ? "1" : "0");
+                QuietLights.sync(this);   // re-derive lights_quiet now, not at the next DND edge
+                bumpRev();
+            });
+            row.addView(sw);
+        }
+        note(lighting, "While Do Not Disturb is on (manual, scheduled or Bedtime mode) the logo, "
+                + "shoulder strip and fan ring stay dark even when the fan spins up; your colours "
+                + "come back when it ends.");
 
         // ---- Shoulder triggers ----
         header(controls, "Shoulder triggers");
@@ -182,6 +198,21 @@ public class SettingsActivity extends Activity {
         addSwitch(system, getString(R.string.tile_fpwake), "persist.sys.fp_wake.enabled");
         addSwitch(system, getString(R.string.tile_dt2w), "persist.sys.dt2w.enabled");
 
+        // ---- Privacy: per-app camera / mic / location guard ----
+        header(privacy, "Privacy guard");
+        privacySection(privacy);
+
+        // ---- Privacy: per-app "ignore FLAG_SECURE" (framework reads Secure rm_screenshot_allow) ----
+        header(privacy, "Screenshots");
+        screenshotSection(privacy);
+
+        // ---- Privacy: VoIP call recording (engine = VoipRecorder priv-app, switches here) ----
+        header(privacy, "VoIP call recording");
+        voipRecorderSection(privacy);
+
+        header(privacy, "SMS verification codes");
+        otpSmsSection(privacy);
+
         // ---- Attestation ----
         header(system, "Attestation");
         rkpRow(system);
@@ -207,8 +238,8 @@ public class SettingsActivity extends Activity {
         batteryStatsRow(system);
 
         setContentView(buildTabbedRoot(
-                new String[]{"Cooling", "Lighting", "Controls", "Audio", "Display", "System"},
-                new LinearLayout[]{cooling, lighting, controls, audio, display, system}));
+                new String[]{"Cooling", "Lighting", "Controls", "Audio", "Display", "Privacy", "System"},
+                new LinearLayout[]{cooling, lighting, controls, audio, display, privacy, system}));
         setTitle(R.string.app_name);
     }
 
@@ -281,7 +312,7 @@ public class SettingsActivity extends Activity {
             t.setAllCaps(true);
             t.setMaxLines(1);
             t.setGravity(Gravity.CENTER);
-            // Six equal-width cells on a 1216px panel leave ~67dp each, which is not enough for
+            // Seven equal-width cells on a 1216px panel leave ~57dp each, which is not enough for
             // "LIGHTING"/"CONTROLS" at a fixed 12sp: the label was clipped mid-word ("LIGHTIN",
             // "CONTRO"). Autosize shrinks only the labels that need it, so the short ones keep
             // the full size. setTextSize() is ignored once autosizing is on, hence it is gone.
@@ -789,6 +820,16 @@ public class SettingsActivity extends Activity {
         note(box, "Lets the game render at a lower resolution and sharpens it back up on the NPU. "
                 + "Only kicks in when the game's own resolution is below 1080 x 2400.");
 
+        LinearLayout perRow = labelledRow(box, "Per-game switches");
+        Button per = new Button(this);
+        per.setText("Edit");
+        per.setOnClickListener(v -> showGppPerGame());
+        perRow.addView(per);
+        note(box, "Turn it off for one title (emulators such as Dolphin, AetherSX2 or Winlator "
+                + "mostly get worse with it) or add a game that is not on Qualcomm's list. The "
+                + "choice is pushed to the NPU pipeline whenever that app comes to the front, so "
+                + "it also applies mid-game.");
+
         LinearLayout allRow = labelledRow(box, "Try it on every game");
         Switch all = new Switch(this);
         all.setChecked(Prop.getBool(GamePostProcessing.PROP_ALLGAME, GamePostProcessing.DEF_ALLGAME));
@@ -892,6 +933,145 @@ public class SettingsActivity extends Activity {
                             android.content.ClipData.newPlainText("gpp games", plain));
                 })
                 .show();
+    }
+
+    /**
+     * Per-game switches: every installed app GPP would look at (Qualcomm's list, or everything
+     * with "Try it on every game") plus the ones the user added, each with an on/off switch, and
+     * an "Add app" picker for unlisted titles. Overrides are kept in GamePostProcessing's prefs.
+     */
+    private void showGppPerGame() {
+        final PackageManager pm = getPackageManager();
+        final boolean allgame = Prop.getBool(GamePostProcessing.PROP_ALLGAME, GamePostProcessing.DEF_ALLGAME);
+        // Candidate set: installed listed games + explicit overrides (either direction).
+        final java.util.TreeMap<String, String> rows = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        final java.util.Set<String> pkgs = new java.util.HashSet<>();
+        for (GamePostProcessing.Entry e : GamePostProcessing.readAppList()) pkgs.add(e.pkg);
+        pkgs.addAll(GamePostProcessing.forcedOn(this));
+        for (String pkg : launchablePackages(pm)) {
+            if (GamePostProcessing.overrideOf(this, pkg) != 0) pkgs.add(pkg);
+        }
+        for (String pkg : pkgs) {
+            final String l = GamePostProcessing.installedLabel(this, pkg);
+            if (l == null) continue;                                   // not installed
+            final String known = GamePostProcessing.knownName(pkg);
+            rows.put((known != null ? known : l) + "\n" + pkg, pkg);
+        }
+
+        final int pad = dp(16);
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(8), pad, 0);
+        final TextView intro = new TextView(this);
+        intro.setText(rows.isEmpty()
+                ? "No supported game is installed. Add an app below to try the NPU on it."
+                : (allgame ? "\"Try it on every game\" is on, so anything not switched off "
+                        + "here gets it too." : "Installed titles from Qualcomm's list, plus "
+                        + "the apps you added."));
+        intro.setTextSize(13);
+        box.addView(intro);
+
+        final LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        for (java.util.Map.Entry<String, String> r : rows.entrySet()) {
+            final String pkg = r.getValue();
+            final boolean listed = GamePostProcessing.isListed(pkg);
+            LinearLayout row = labelledRow(list, r.getKey());
+            ((TextView) row.getChildAt(0)).setTextSize(14);
+            final Switch sw = new Switch(this);
+            final Boolean d = GamePostProcessing.decide(this, pkg);
+            sw.setChecked(d != null && d);
+            sw.setOnCheckedChangeListener((v, on) -> {
+                // Default already means "on" for listed / allgame apps; anything else needs
+                // an explicit entry. Off is only an explicit entry when default would be on.
+                final boolean defOn = listed || allgame;
+                GamePostProcessing.setOverride(this, pkg, on ? (defOn ? 0 : 1) : (defOn ? -1 : 0));
+            });
+            row.addView(sw);
+        }
+        final ScrollView sv = new ScrollView(this);
+        sv.addView(list);
+        box.addView(sv, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(rows.isEmpty() ? 0 : 360)));
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Per-game switches")
+                .setView(box)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton("Add app\u2026", (dlg, w) -> showGppAddApp(pm, pkgs))
+                .show();
+    }
+
+    /** Searchable picker over launchable apps not already in the per-game list; tap = add. */
+    private void showGppAddApp(PackageManager pm, java.util.Set<String> already) {
+        showAppPicker(pm, already, pkg -> {
+            GamePostProcessing.setOverride(this, pkg, 1);
+            Toast.makeText(this, "NPU post-processing on for " + pkg, Toast.LENGTH_SHORT).show();
+            showGppPerGame();
+        });
+    }
+
+    /** Searchable picker over launchable apps (minus {@code already} and ourselves); tap = pick. */
+    private void showAppPicker(PackageManager pm, java.util.Set<String> already,
+            java.util.function.Consumer<String> onPick) {
+        final java.util.List<String> all = new java.util.ArrayList<>();
+        final java.util.Map<String, String> byRow = new java.util.HashMap<>();
+        for (String pkg : launchablePackages(pm)) {
+            if (already.contains(pkg) || pkg.equals(getPackageName())) continue;
+            final String l = GamePostProcessing.installedLabel(this, pkg);
+            final String row = (l == null ? pkg : l) + "\n" + pkg;
+            all.add(row); byRow.put(row, pkg);
+        }
+        java.util.Collections.sort(all, String.CASE_INSENSITIVE_ORDER);
+
+        final int pad = dp(16);
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(8), pad, 0);
+        final android.widget.EditText search = new android.widget.EditText(this);
+        search.setHint("Search name or package");
+        search.setSingleLine(true);
+        search.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.addView(search);
+        final ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1, new java.util.ArrayList<>(all));
+        final android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setAdapter(adapter);
+        box.addView(lv, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(420)));
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            public void afterTextChanged(android.text.Editable ed) {
+                final String q = ed.toString().trim().toLowerCase(java.util.Locale.ROOT);
+                adapter.clear();
+                for (String row : all) {
+                    if (q.isEmpty() || row.toLowerCase(java.util.Locale.ROOT).contains(q)) adapter.add(row);
+                }
+                adapter.notifyDataSetChanged();
+            }
+        });
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("Add an app")
+                .setView(box)
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+        lv.setOnItemClickListener((p, v, pos, id) -> {
+            final String pkg = byRow.get(adapter.getItem(pos));
+            dlg.dismiss();
+            if (pkg != null) onPick.accept(pkg);
+        });
+    }
+
+    private static java.util.List<String> launchablePackages(PackageManager pm) {
+        final java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        final android.content.Intent probe = new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+        for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(probe, 0)) {
+            if (ri.activityInfo != null) out.add(ri.activityInfo.packageName);
+        }
+        return new java.util.ArrayList<>(out);
     }
 
     private void header(LinearLayout root, String text) {
@@ -1651,6 +1831,521 @@ public class SettingsActivity extends Activity {
     /** The slider modes that actually consume {@link SliderWatcher#PROP_APP}. */
     private static boolean usesApp(int mode) {
         return mode == SliderWatcher.MODE_LAUNCH || mode == SliderWatcher.MODE_LAUNCH_HOME;
+    }
+
+    // ---------- VoIP call recording ----------
+    // The recorder itself is the separate VoipRecorder priv-app (device/nubia/NX809J/apps): it
+    // needs its own uid for the CAPTURE_VOICE_COMMUNICATION_OUTPUT audio policy and stays a
+    // persistent /system app. Its two switches are Settings.Secure keys it observes; we own the
+    // UI, the consent text and its runtime permissions (RECORD_AUDIO / POST_NOTIFICATIONS are
+    // runtime grants nobody would otherwise ever prompt for on a launcher-less app).
+    private static final String VOIPREC_PKG = "com.nx809j.voiprecorder";
+    private static final String OTP_ENABLED  = "rm_otp_enabled";
+    private static final String OTP_AUTOCOPY = "rm_otp_autocopy";
+    private static final String OTP_NOTIFY   = "rm_otp_notify";
+
+    private void otpSmsSection(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "Detect verification codes in SMS");
+        final Switch master = new Switch(this);
+        final boolean masterOn = Settings.Secure.getInt(getContentResolver(), OTP_ENABLED, 1) != 0;
+        master.setChecked(masterOn);
+        row.addView(master);
+
+        final LinearLayout autoRow = labelledRow(root, "Auto-copy the code to the clipboard");
+        final Switch auto = new Switch(this);
+        auto.setChecked(secureOn(OTP_AUTOCOPY));
+        auto.setOnCheckedChangeListener((v, on) ->
+                Settings.Secure.putInt(getContentResolver(), OTP_AUTOCOPY, on ? 1 : 0));
+        autoRow.addView(auto);
+
+        final LinearLayout notifyRow = labelledRow(root, "Also show a RedMagic \"Copy code\" notification");
+        final Switch notify = new Switch(this);
+        notify.setChecked(secureOn(OTP_NOTIFY));
+        notify.setOnCheckedChangeListener((v, on) ->
+                Settings.Secure.putInt(getContentResolver(), OTP_NOTIFY, on ? 1 : 0));
+        notifyRow.addView(notify);
+
+        // The sub-options are meaningless with detection off; grey them out instead of letting
+        // the user enable one and wonder why nothing happens.
+        final Runnable sync = () -> {
+            boolean on = master.isChecked();
+            auto.setEnabled(on);
+            autoRow.setAlpha(on ? 1f : 0.4f);
+            notify.setEnabled(on);
+            notifyRow.setAlpha(on ? 1f : 0.4f);
+        };
+        sync.run();
+        master.setOnCheckedChangeListener((v, on) -> {
+            Settings.Secure.putInt(getContentResolver(), OTP_ENABLED, on ? 1 : 0);
+            sync.run();
+        });
+
+        note(root, "The Messages notification already offers a one-tap \"Copy code\" for texts "
+                + "with a verification code, and the keyboard offers whatever was copied as a "
+                + "paste chip. With detection on, Auto-copy puts the code on the clipboard the "
+                + "moment it arrives so you just paste; the extra RedMagic notification is off by "
+                + "default so you are not prompted twice. Codes are matched on the phone; nothing "
+                + "is uploaded. There is no Google SMS autofill on this build, so codes are copied "
+                + "rather than typed into the field for you.");
+    }
+
+    private static final String VOIPREC_ENABLED = "rm_voiprec_enabled";
+    private static final String VOIPREC_MODE  = "rm_voiprec_mode";    // 0 listed only, 1 ask, 2 all
+    private static final String VOIPREC_ALLOW = "rm_voiprec_allow";   // comma-separated packages
+    private static final String VOIPREC_DENY  = "rm_voiprec_deny";
+
+    private boolean secureOn(String key) {
+        return Settings.Secure.getInt(getContentResolver(), key, 0) != 0;
+    }
+
+    private void voipRecorderSection(LinearLayout root) {
+        if (!PrivacyGuard.installed(this, VOIPREC_PKG)) {
+            note(root, "The VoIP call recorder is not installed in this build.");
+            return;
+        }
+        LinearLayout row = labelledRow(root, "Auto-record VoIP calls");
+        final Switch master = new Switch(this);
+        master.setChecked(secureOn(VOIPREC_ENABLED));
+        master.setOnCheckedChangeListener((v, on) -> {
+            if (!on) {
+                Settings.Secure.putInt(getContentResolver(), VOIPREC_ENABLED, 0);
+                return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Recording calls")
+                    .setMessage("Records both sides of VoIP calls from WhatsApp (and, optionally, "
+                            + "other calling apps) and saves them as WAV files in the "
+                            + "CallRecordings folder.\n\nRecording a call may require the consent "
+                            + "of everyone on the call. Laws differ by country and some places "
+                            + "require all parties to agree. You are responsible for using this "
+                            + "legally and for informing the other party. A notification is shown "
+                            + "while a call is being recorded.\n\nOnly your mic (uplink) and the "
+                            + "other party (downlink) are captured; nothing leaves the phone.")
+                    .setPositiveButton("I understand", (d, w) -> {
+                        grantVoipRecorderPerms();
+                        Settings.Secure.putInt(getContentResolver(), VOIPREC_ENABLED, 1);
+                        toast("Auto-recording enabled");
+                    })
+                    .setNegativeButton(android.R.string.cancel, (d, w) -> master.setChecked(false))
+                    .setOnCancelListener(d -> master.setChecked(false))
+                    .show();
+        });
+        row.addView(master);
+
+        // Per-app policy: record list, ignore list, and what to do with everything else.
+        row = labelledRow(root, "Apps not on either list");
+        final Spinner mode = new Spinner(this);
+        mode.setAdapter(new android.widget.ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item,
+                new String[] { "Don't record", "Ask me on their first call", "Record" }));
+        mode.setSelection(clamp(Settings.Secure.getInt(getContentResolver(), VOIPREC_MODE, 1), 0, 2));
+        mode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
+                Settings.Secure.putInt(getContentResolver(), VOIPREC_MODE, pos);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        row.addView(mode);
+
+        mVoipRecordList = new LinearLayout(this);
+        mVoipRecordList.setOrientation(LinearLayout.VERTICAL);
+        mVoipIgnoreList = new LinearLayout(this);
+        mVoipIgnoreList.setOrientation(LinearLayout.VERTICAL);
+        TextView h = new TextView(this); h.setTextSize(14); h.setText("Always record");
+        h.setPadding(0, dp(8), 0, 0); root.addView(h);
+        root.addView(mVoipRecordList);
+        Button addRec = new Button(this, null, android.R.attr.borderlessButtonStyle);
+        addRec.setText("Add app to record\u2026"); addRec.setTextColor(accentColor());
+        addRec.setOnClickListener(v -> showAppPicker(getPackageManager(),
+                voipList(VOIPREC_ALLOW), pkg -> { voipDecide(pkg, true); rebuildVoipLists(); }));
+        root.addView(addRec);
+        h = new TextView(this); h.setTextSize(14); h.setText("Never record");
+        h.setPadding(0, dp(8), 0, 0); root.addView(h);
+        root.addView(mVoipIgnoreList);
+        Button addIgn = new Button(this, null, android.R.attr.borderlessButtonStyle);
+        addIgn.setText("Add app to ignore\u2026"); addIgn.setTextColor(accentColor());
+        addIgn.setOnClickListener(v -> showAppPicker(getPackageManager(),
+                voipList(VOIPREC_DENY), pkg -> { voipDecide(pkg, false); rebuildVoipLists(); }));
+        root.addView(addIgn);
+        rebuildVoipLists();
+
+        final Button open = new Button(this);
+        open.setText("Recordings\u2026");
+        open.setOnClickListener(v -> {
+            try {
+                startActivity(new android.content.Intent().setClassName(VOIPREC_PKG,
+                        VOIPREC_PKG + ".RecordingsActivity"));
+            } catch (Exception e) {
+                toast("Cannot open the recordings browser: " + e.getMessage());
+            }
+        });
+        root.addView(open);
+        note(root, "Nothing runs while idle: a call is detected from the app opening the "
+                + "microphone in communication mode, recorded through the audio HAL's VoIP "
+                + "capture path (both sides, no speakerphone needed) and saved to "
+                + "/sdcard/CallRecordings as \u201cApp - Contact (date).wav\u201d; the contact "
+                + "comes from the app's own call notification. With \u201cAsk me\u201d, the first "
+                + "call from an app not on either list is not recorded; a notification offers "
+                + "Always / This call / Never. Tap a recording to play it, long-press to delete; "
+                + "the browser's menu has a 15 s test recording.");
+    }
+
+    private LinearLayout mVoipRecordList, mVoipIgnoreList;
+
+    /** Comma-separated Secure package list; the record list defaults to WhatsApp. */
+    private java.util.Set<String> voipList(String key) {
+        String v = Settings.Secure.getString(getContentResolver(), key);
+        if (v == null) v = VOIPREC_ALLOW.equals(key) ? "com.whatsapp,com.whatsapp.w4b" : "";
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (String p : v.split(",")) { p = p.trim(); if (!p.isEmpty()) out.add(p); }
+        return out;
+    }
+
+    private void voipStore(String key, java.util.Set<String> set) {
+        Settings.Secure.putString(getContentResolver(), key, String.join(",", set));
+    }
+
+    /** Put pkg on the record list (record=true) or the ignore list, removing it from the other. */
+    private void voipDecide(String pkg, boolean record) {
+        java.util.Set<String> a = voipList(VOIPREC_ALLOW), d = voipList(VOIPREC_DENY);
+        if (record) { a.add(pkg); d.remove(pkg); } else { d.add(pkg); a.remove(pkg); }
+        voipStore(VOIPREC_ALLOW, a); voipStore(VOIPREC_DENY, d);
+    }
+
+    private void rebuildVoipLists() {
+        rebuildVoipList(mVoipRecordList, VOIPREC_ALLOW, "No apps \u2014 nothing is recorded automatically.");
+        rebuildVoipList(mVoipIgnoreList, VOIPREC_DENY, "No apps.");
+    }
+
+    private void rebuildVoipList(LinearLayout list, final String key, String emptyText) {
+        if (list == null) return;
+        list.removeAllViews();
+        final java.util.List<String> pkgs = new java.util.ArrayList<>(voipList(key));
+        if (pkgs.isEmpty()) { note(list, emptyText); return; }
+        java.util.Collections.sort(pkgs, (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
+                PrivacyGuard.label(this, a), PrivacyGuard.label(this, b)));
+        for (String pkg : pkgs) {
+            final boolean installed = PrivacyGuard.installed(this, pkg);
+            final LinearLayout top = new LinearLayout(this);
+            top.setOrientation(LinearLayout.HORIZONTAL);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            top.setPadding(dp(8), dp(2), 0, dp(2));
+            final TextView name = new TextView(this);
+            name.setTextSize(15);
+            name.setText(PrivacyGuard.label(this, pkg) + (installed ? "" : "  (not installed)"));
+            top.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            final Button remove = new Button(this, null, android.R.attr.borderlessButtonStyle);
+            remove.setText("Remove");
+            remove.setTextColor(accentColor());
+            remove.setOnClickListener(v -> {
+                java.util.Set<String> set = voipList(key);
+                set.remove(pkg);
+                voipStore(key, set);
+                rebuildVoipLists();
+            });
+            top.addView(remove);
+            list.addView(top);
+        }
+    }
+
+    private void grantVoipRecorderPerms() {
+        final PackageManager pm = getPackageManager();
+        for (String perm : new String[] { android.Manifest.permission.RECORD_AUDIO,
+                android.Manifest.permission.POST_NOTIFICATIONS }) {
+            try {
+                pm.grantRuntimePermission(VOIPREC_PKG, perm, android.os.Process.myUserHandle());
+            } catch (Throwable t) {
+                android.util.Log.w("RMControl", "grant " + perm + " to recorder failed", t);
+            }
+        }
+    }
+
+    // ---------- privacy guard (per-app camera / mic / location, invisible to the app) ----------
+    private Button mManageGuarded;
+
+    private void privacySection(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "Privacy guard");
+        final Switch master = new Switch(this);
+        master.setChecked(PrivacyGuard.enabled());
+        master.setOnCheckedChangeListener((v, on) -> PrivacyGuard.setEnabled(getApplicationContext(), on));
+        row.addView(master);
+        note(root, "Blocks camera, microphone, location, contacts, photos & videos, audio & music, "
+                + "files or nearby devices for the apps below WITHOUT taking the permission away, so "
+                + "the app never notices: it keeps thinking it has access, the mic records silence, "
+                + "the camera is \"unavailable\", location never fixes, and contacts/media/files "
+                + "come back empty. No green privacy dot for camera/mic.\n\n"
+                + "Camera/mic attempts still notify with \"Allow for 10 min\" for the times you want "
+                + "it (a video call, a bank's ID check); the others are blocked quietly. Rules "
+                + "survive reboots and app updates; also on the Privacy guard Quick Settings tile.");
+
+        LinearLayout autoRow = labelledRow(root, "Auto-guard newly installed apps");
+        final Switch auto = new Switch(this);
+        auto.setChecked(PrivacyGuard.autoEnabled());
+        auto.setOnCheckedChangeListener((v, on) -> {
+            PrivacyGuard.setAutoEnabled(getApplicationContext(), on);
+            if (on && !PrivacyGuard.enabled()) master.setChecked(true);
+        });
+        autoRow.addView(auto);
+        note(root, "When on, every app you install from now on is added here with everything "
+                + "blocked, so a new app gets nothing until you tick what it may use below.");
+
+        mManageGuarded = new Button(this);
+        mManageGuarded.setOnClickListener(v -> showGuardedAppsManager(master));
+        root.addView(mManageGuarded);
+        refreshManageButton();
+    }
+
+    private void refreshManageButton() {
+        if (mManageGuarded == null) return;
+        final int n = PrivacyGuard.rules(this).size();
+        mManageGuarded.setText(n == 0 ? "Manage guarded apps\u2026"
+                : "Manage guarded apps (" + n + ")\u2026");
+    }
+
+    // ---------- screenshots: per-app FLAG_SECURE override ----------
+    private LinearLayout mScreenshotList;
+
+    private void screenshotSection(LinearLayout root) {
+        LinearLayout copyRow = labelledRow(root, "Copy every screenshot to the clipboard");
+        final Switch autoCopy = new Switch(this);
+        autoCopy.setChecked(Settings.Secure.getInt(getContentResolver(), "rm_screenshot_autocopy", 1) != 0);
+        autoCopy.setOnCheckedChangeListener((v, on) ->
+                Settings.Secure.putInt(getContentResolver(), "rm_screenshot_autocopy", on ? 1 : 0));
+        copyRow.addView(autoCopy);
+        note(root, "The screenshot is saved as usual and also put on the clipboard the moment it "
+                + "is taken, so it can be pasted right away (the keyboard offers it as a paste "
+                + "chip). The preview's Copy chip still works with this off.");
+
+        note(root, "Apps listed here cannot block screenshots or screen recording: the system "
+                + "ignores their \u201csecure window\u201d flag. Only these apps \u2014 everything "
+                + "else (banking, payments, work profile) stays protected. The app is not told; it "
+                + "still believes the flag is set. Takes effect immediately, survives reboots.");
+        mScreenshotList = new LinearLayout(this);
+        mScreenshotList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(mScreenshotList);
+        rebuildScreenshotList();
+
+        final Button add = new Button(this);
+        add.setText("Add app\u2026");
+        add.setOnClickListener(v -> showAppPicker(getPackageManager(),
+                ScreenshotAllow.list(this), pkg -> {
+                    ScreenshotAllow.add(getApplicationContext(), pkg);
+                    rebuildScreenshotList();
+                }));
+        root.addView(add);
+    }
+
+    private void rebuildScreenshotList() {
+        final LinearLayout list = mScreenshotList;
+        list.removeAllViews();
+        final java.util.List<String> pkgs = new java.util.ArrayList<>(ScreenshotAllow.list(this));
+        if (pkgs.isEmpty()) {
+            note(list, "No apps yet \u2014 e.g. add WhatsApp or Telegram.");
+            return;
+        }
+        java.util.Collections.sort(pkgs, (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
+                PrivacyGuard.label(this, a), PrivacyGuard.label(this, b)));
+        for (String pkg : pkgs) {
+            final boolean installed = PrivacyGuard.installed(this, pkg);
+            final LinearLayout top = new LinearLayout(this);
+            top.setOrientation(LinearLayout.HORIZONTAL);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            top.setPadding(0, dp(4), 0, dp(4));
+            final TextView name = new TextView(this);
+            name.setTextSize(15);
+            name.setText(PrivacyGuard.label(this, pkg) + (installed ? "" : "  (not installed)"));
+            top.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            final Button remove = new Button(this, null, android.R.attr.borderlessButtonStyle);
+            remove.setText("Remove");
+            remove.setTextColor(accentColor());
+            remove.setOnClickListener(v -> {
+                ScreenshotAllow.remove(getApplicationContext(), pkg);
+                rebuildScreenshotList();
+            });
+            top.addView(remove);
+            list.addView(top);
+        }
+    }
+
+    // ---- Guarded-apps manager: a searchable floating list; tap an app to edit its blocks ----
+    private void showGuardedAppsManager(final Switch master) {
+        final int pad = dp(16);
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(8), pad, 0);
+
+        final android.widget.EditText search = new android.widget.EditText(this);
+        search.setHint("Search guarded apps");
+        search.setSingleLine(true);
+        search.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.addView(search);
+
+        final java.util.List<String> rows = new java.util.ArrayList<>();
+        final java.util.Map<String, String> pkgByRow = new java.util.HashMap<>();
+        final ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_2, android.R.id.text1,
+                new java.util.ArrayList<String>()) {
+            @Override public android.view.View getView(int position, android.view.View convertView,
+                    android.view.ViewGroup parent) {
+                final android.view.View v = super.getView(position, convertView, parent);
+                final String pkg = pkgByRow.get(getItem(position));
+                ((TextView) v.findViewById(android.R.id.text1)).setText(
+                        PrivacyGuard.label(SettingsActivity.this, pkg)
+                        + (PrivacyGuard.installed(SettingsActivity.this, pkg) ? "" : "  (not installed)"));
+                ((TextView) v.findViewById(android.R.id.text2)).setText(blockedSummary(pkg));
+                return v;
+            }
+        };
+        final android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setAdapter(adapter);
+        box.addView(lv, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(420)));
+
+        final TextView empty = new TextView(this);
+        empty.setPadding(0, dp(12), 0, dp(12));
+        empty.setTextColor(0xFF888888);
+        box.addView(empty);
+
+        final Runnable reload = () -> {
+            rows.clear(); pkgByRow.clear();
+            final java.util.List<java.util.Map.Entry<String, Integer>> sorted =
+                    new java.util.ArrayList<>(PrivacyGuard.rules(this).entrySet());
+            java.util.Collections.sort(sorted, (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
+                    PrivacyGuard.label(this, a.getKey()), PrivacyGuard.label(this, b.getKey())));
+            for (java.util.Map.Entry<String, Integer> e : sorted) {
+                final String key = PrivacyGuard.label(this, e.getKey()) + "\n" + e.getKey();
+                rows.add(key); pkgByRow.put(key, e.getKey());
+            }
+            empty.setText(rows.isEmpty()
+                    ? "No apps guarded yet. Use \u201cAdd app\u2026\u201d below." : "");
+            applyPrivacyFilter(search, rows, adapter);
+            refreshManageButton();
+        };
+        reload.run();
+
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            public void afterTextChanged(android.text.Editable ed) {
+                applyPrivacyFilter(search, rows, adapter);
+            }
+        });
+
+        lv.setOnItemClickListener((p, v, pos, id) -> {
+            final String pkg = pkgByRow.get(adapter.getItem(pos));
+            if (pkg != null) showPrivacyAppEditor(pkg, reload);
+        });
+
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("Guarded apps")
+                .setView(box)
+                .setPositiveButton("Add app\u2026", null)   // click handler set below so it stays open
+                .setNegativeButton("Close", null)
+                .show();
+        dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+                showAppPicker(getPackageManager(), PrivacyGuard.rules(this).keySet(), pkg -> {
+                    PrivacyGuard.setMask(getApplicationContext(), pkg, PrivacyGuard.ALL);
+                    if (master != null && !PrivacyGuard.enabled()) master.setChecked(true);
+                    reload.run();
+                    showPrivacyAppEditor(pkg, reload);
+                }));
+    }
+
+    private void applyPrivacyFilter(android.widget.EditText search, java.util.List<String> rows,
+            ArrayAdapter<String> adapter) {
+        final String q = search.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);
+        adapter.setNotifyOnChange(false);
+        adapter.clear();
+        for (String row : rows) {
+            if (q.isEmpty() || row.toLowerCase(java.util.Locale.ROOT).contains(q)) adapter.add(row);
+        }
+        adapter.notifyDataSetChanged();
+    }
+
+    private String blockedSummary(String pkg) {
+        final int mask = PrivacyGuard.maskOf(this, pkg);
+        if (mask == 0) return "Nothing blocked";
+        final long until = PrivacyGuard.allowedUntil(this, pkg);
+        final String suffix = until == 0 ? "" : "  \u2014 allowed until "
+                + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until));
+        if (mask == PrivacyGuard.ALL) return "Everything blocked" + suffix;
+        final int[] bits = { PrivacyGuard.CAMERA, PrivacyGuard.MIC, PrivacyGuard.LOCATION,
+                PrivacyGuard.CONTACTS, PrivacyGuard.MEDIA_VISUAL, PrivacyGuard.MEDIA_AUDIO,
+                PrivacyGuard.FILES, PrivacyGuard.NEARBY };
+        final String[] names = { "Camera", "Mic", "Location", "Contacts", "Photos", "Audio",
+                "Files", "Nearby" };
+        final StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < bits.length; i++) {
+            if ((mask & bits[i]) != 0) { if (sb.length() > 0) sb.append(", "); sb.append(names[i]); }
+        }
+        return sb.toString() + suffix;
+    }
+
+    // ---- Per-app editor: the eight category toggles + mute + allow status + remove ----
+    private void showPrivacyAppEditor(final String pkg, final Runnable onChange) {
+        final int pad = dp(16);
+        final ScrollView sv = new ScrollView(this);
+        final LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.setPadding(pad, dp(8), pad, dp(8));
+        sv.addView(block);
+
+        final TextView sub = new TextView(this);
+        sub.setTextSize(12);
+        sub.setTextColor(0xFF888888);
+        sub.setText(pkg + (PrivacyGuard.installed(this, pkg) ? "" : "  (not installed)"));
+        block.addView(sub);
+
+        final int[] bits = { PrivacyGuard.CAMERA, PrivacyGuard.MIC, PrivacyGuard.LOCATION,
+                PrivacyGuard.CONTACTS, PrivacyGuard.MEDIA_VISUAL, PrivacyGuard.MEDIA_AUDIO,
+                PrivacyGuard.FILES, PrivacyGuard.NEARBY };
+        final String[] names = { "Camera", "Mic", "Location", "Contacts", "Photos & videos",
+                "Audio & music", "Files", "Nearby devices" };
+        for (int i = 0; i < bits.length; i++) {
+            final int bit = bits[i];
+            final android.widget.CheckBox cb = new android.widget.CheckBox(this);
+            cb.setText(names[i]);
+            cb.setChecked((PrivacyGuard.maskOf(this, pkg) & bit) != 0);
+            cb.setOnCheckedChangeListener((v, on) -> {
+                final int cur = PrivacyGuard.maskOf(this, pkg);
+                PrivacyGuard.setMask(getApplicationContext(), pkg, on ? (cur | bit) : (cur & ~bit));
+                if (onChange != null) onChange.run();
+            });
+            block.addView(cb);
+        }
+
+        final android.widget.CheckBox mute = new android.widget.CheckBox(this);
+        mute.setText("Mute \u201cblocked\u201d alerts for this app");
+        mute.setChecked(PrivacyGuard.muted(this, pkg));
+        mute.setOnCheckedChangeListener((v, on) ->
+                PrivacyGuard.setMuted(getApplicationContext(), pkg, on));
+        block.addView(mute);
+
+        final long until = PrivacyGuard.allowedUntil(this, pkg);
+        if (until != 0) {
+            final TextView tmp = new TextView(this);
+            tmp.setTextSize(12);
+            tmp.setTextColor(accentColor());
+            tmp.setText("Allowed until " + android.text.format.DateFormat.getTimeFormat(this)
+                    .format(new java.util.Date(until)) + " \u2014 tap to guard again now");
+            tmp.setOnClickListener(v -> {
+                PrivacyGuard.revokeAllow(getApplicationContext(), pkg);
+                tmp.setVisibility(android.view.View.GONE);
+                if (onChange != null) onChange.run();
+            });
+            block.addView(tmp);
+        }
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(PrivacyGuard.label(this, pkg))
+                .setView(sv)
+                .setPositiveButton("Done", (d, w) -> { if (onChange != null) onChange.run(); })
+                .setNeutralButton("Remove", (d, w) -> {
+                    PrivacyGuard.setMask(getApplicationContext(), pkg, 0);
+                    if (onChange != null) onChange.run();
+                })
+                .show();
     }
 
     private LinearLayout labelledRow(LinearLayout root, String title) {

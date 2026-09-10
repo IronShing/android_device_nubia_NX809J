@@ -36,6 +36,12 @@ constexpr char kFollowProp[]  = "persist.sys.rm.fan_rgb_follow";
 constexpr char kActiveProp[]  = "persist.sys.rm.fan_rgb.active";
 constexpr char kValueProp[]   = "persist.sys.rm.fan_rgb.value";
 constexpr char kUserLedProp[] = "persist.sys.rm.led.fan";
+// Do Not Disturb lights-out. RedMagicControl (QuietLights) owns this: 1 while DND is active and
+// the user's switch is on. Every LED trigger in redmagic_hw_arm.rc is chained on "=0", so an
+// UNSET property (first boot after the update, before the app has run once -- it is not
+// directBootAware) would keep every zone dark until first unlock. vendor_init may not set
+// rm_ctrl_prop, so we seed the 0 here; the app corrects it once it starts.
+constexpr char kQuietProp[]   = "persist.sys.rm.lights_quiet";
 // Encoding is 0x<pos><eee><ccc> -- the same string the settings app writes. Fan ring is
 // position 3, effect 002 = constant, and colours 101-108 are the multi-colour RGB presets,
 // which ship for the fan ring only (aw_fan*_10{1..8}.bin).
@@ -112,6 +118,7 @@ int readMaxTempC() {
 
 int main() {
     LOG(INFO) << "hwcontrol: started (auto-fan)";
+    if (GetProperty(kQuietProp, "").empty()) SetProperty(kQuietProp, "0");
     int lastLvl = -1;
     int lastRgb = -1;          // -1 = unknown, so the first pass always publishes
     for (;;) {

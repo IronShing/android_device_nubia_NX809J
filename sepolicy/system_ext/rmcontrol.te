@@ -25,3 +25,8 @@ get_prop(system_app, remote_prov_prop)
 # system_ext policy cannot name ("unknown type sysfs_usb_ctrl" from checkpolicy). It is baked
 # into vendor_sepolicy.cil by sign_a17_release.sh instead, where both system_app and the vendor
 # type exist in the same policy. See memory nx809j_ext_display_fixed_refresh.
+
+# Magic Slider push channel: SliderWatcher connects to /dev/socket/slider_uewake and blocks on
+# read, so a slide with the screen off wakes it immediately (see slider_uewake.te).
+allow system_app slider_uewake_socket:sock_file write;
+allow system_app slider_uewake:unix_stream_socket connectto;

@@ -1,15 +1,23 @@
 package com.nubia.rmcontrol;
 
+import android.app.ActivityManager;
+import android.app.ActivityTaskManager;
+import android.app.TaskStackListener;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Qualcomm Game Post Processing (GPP): AI super-resolution and frame interpolation
@@ -29,6 +37,16 @@ import java.util.List;
  * values are gppservice-side knobs. gppservice only touches packages listed in
  * /system/etc/gpp_app_list unless allgame is set, and it can process only one
  * surface at a time.
+ *
+ * Per-game switches (XDA #90: emulators want it off, a few unlisted games want it on):
+ * neither blob has a per-package knob, but both decisions are taken per surface at Init
+ * time -- libgui polls frc.enable on every dequeue, gppservice reads allgame.enable and
+ * the list when a session opens ("allgame is %u" is logged per session). So the app
+ * watches the foreground task and, whenever a package with an explicit or implicit
+ * decision comes to the front, sets frc.enable / allgame.enable for THAT package before
+ * its first frame. Overrides live in SharedPreferences (a persist property tops out at
+ * 92 characters). Apps with no decision (launcher, this app, ...) leave frc.enable alone
+ * so a game paused behind them is not torn down and rebuilt on every switch.
  */
 final class GamePostProcessing {
     private static final String TAG = "RMControl.GPP";
@@ -58,12 +76,138 @@ final class GamePostProcessing {
             Prop.set("vendor.gpp.dynamic.settings.enable", "1");
             Prop.set("vendor.gpp.frc.enable", "0x22");
             Log.i(TAG, "on: allgame=" + allgame + " interp=" + interp + " upscale=" + upscale);
+            // A game that is in front right now (switch flipped from the QS panel or a
+            // floating window) gets its own decision, not the global one.
+            final Context ctx = sCtx; final String fg = sForeground;
+            if (ctx != null && fg != null) applyFor(ctx, fg);
         } else {
             Prop.set("vendor.gpp.frc.enable", "0x21");
             Prop.set("vendor.gpp.dynamic.settings.enable", "0");
             Prop.set("vendor.gpp.allgame.enable", "0");
             Log.i(TAG, "off");
         }
+    }
+
+
+    // ---------------- per-game overrides + foreground watcher ----------------
+
+    static final String PREFS = "gpp";
+    private static final String KEY_FORCE_ON  = "force_on";   // unlisted apps the user added
+    private static final String KEY_FORCE_OFF = "force_off";  // listed/allgame apps the user disabled
+
+    /** What the user asked for a package: 0 = default (list / allgame), 1 = on, -1 = off. */
+    static int overrideOf(Context ctx, String pkg) {
+        final SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (p.getStringSet(KEY_FORCE_ON, Collections.emptySet()).contains(pkg)) return 1;
+        if (p.getStringSet(KEY_FORCE_OFF, Collections.emptySet()).contains(pkg)) return -1;
+        return 0;
+    }
+
+    static void setOverride(Context ctx, String pkg, int mode) {
+        final SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        final Set<String> on  = new HashSet<>(p.getStringSet(KEY_FORCE_ON, Collections.emptySet()));
+        final Set<String> off = new HashSet<>(p.getStringSet(KEY_FORCE_OFF, Collections.emptySet()));
+        on.remove(pkg); off.remove(pkg);
+        if (mode > 0) on.add(pkg); else if (mode < 0) off.add(pkg);
+        p.edit().putStringSet(KEY_FORCE_ON, on).putStringSet(KEY_FORCE_OFF, off).apply();
+        Log.i(TAG, "override " + pkg + " = " + mode);
+        if (pkg.equals(sForeground)) applyFor(ctx, pkg);
+    }
+
+    /** Packages the user explicitly turned on (the "added" apps, shown in the per-game list). */
+    static Set<String> forcedOn(Context ctx) {
+        return new HashSet<>(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getStringSet(KEY_FORCE_ON, Collections.emptySet()));
+    }
+
+    private static Set<String> sListed;
+
+    static synchronized boolean isListed(String pkg) {
+        if (sListed == null) {
+            final Set<String> l = new HashSet<>();
+            for (Entry e : readAppList()) l.add(e.pkg);
+            sListed = l;
+        }
+        return sListed.contains(pkg);
+    }
+
+    /**
+     * The effective answer for a package with the master switch on: TRUE / FALSE when it has a
+     * decision (override, listed, or allgame), null when GPP would never look at it anyway.
+     */
+    static Boolean decide(Context ctx, String pkg) {
+        final int o = overrideOf(ctx, pkg);
+        if (o > 0) return Boolean.TRUE;
+        if (o < 0) return Boolean.FALSE;
+        if (isListed(pkg)) return Boolean.TRUE;
+        if (Prop.getBool(PROP_ALLGAME, DEF_ALLGAME)) return Boolean.TRUE;
+        return null;
+    }
+
+    private static Context sCtx;
+    private static volatile String sForeground;
+    private static String sPushedFor;
+
+    /** Push the decision for a package that just came to the front. */
+    static void applyFor(Context ctx, String pkg) {
+        if (!Prop.getBool(PROP_ENABLED, DEF_ENABLED)) return;   // apply() already set 0x21
+        final boolean allgamePref = Prop.getBool(PROP_ALLGAME, DEF_ALLGAME);
+        final Boolean d = decide(ctx, pkg);
+        if (d == null) {
+            // Not a GPP app. Only make sure an "added" app's allgame=1 does not leak onto
+            // whatever EGL app opens next; frc.enable is left as it was.
+            Prop.set("vendor.gpp.allgame.enable", allgamePref ? "1" : "0");
+            return;
+        }
+        // An unlisted app the user added only passes gppservice's check through allgame.
+        final boolean needAllgame = d && !isListed(pkg);
+        Prop.set("vendor.gpp.allgame.enable", (needAllgame || allgamePref) ? "1" : "0");
+        Prop.set("vendor.gpp.frc.enable", d ? "0x22" : "0x21");
+        if (!pkg.equals(sPushedFor)) Log.i(TAG, pkg + " -> " + (d ? "on" : "off")
+                + (needAllgame ? " (via allgame)" : ""));
+        sPushedFor = pkg;
+    }
+
+    /** Follow the foreground task. System uid, so no MANAGE_ACTIVITY_TASKS grant is needed. */
+    static void start(Context ctx) {
+        sCtx = ctx.getApplicationContext();
+        final Handler h = new Handler(Looper.getMainLooper());
+        try {
+            ActivityTaskManager.getService().registerTaskStackListener(new TaskStackListener() {
+                @Override public void onTaskMovedToFront(ActivityManager.RunningTaskInfo ti) {
+                    final String pkg = pkgOf(ti);
+                    if (pkg != null) h.post(() -> foreground(pkg));
+                }
+                @Override public void onTaskStackChanged() {
+                    h.post(GamePostProcessing::refreshForeground);
+                }
+            });
+            refreshForeground();
+        } catch (Throwable t) {
+            Log.e(TAG, "cannot watch the foreground task; per-game switches are inert", t);
+        }
+    }
+
+    private static String pkgOf(android.app.TaskInfo ti) {
+        if (ti == null) return null;
+        if (ti.topActivity != null) return ti.topActivity.getPackageName();
+        if (ti.baseActivity != null) return ti.baseActivity.getPackageName();
+        return null;
+    }
+
+    private static void refreshForeground() {
+        try {
+            final String pkg = pkgOf(ActivityTaskManager.getService().getFocusedRootTaskInfo());
+            if (pkg != null) foreground(pkg);
+        } catch (Throwable t) {
+            Log.w(TAG, "getFocusedRootTaskInfo", t);
+        }
+    }
+
+    private static void foreground(String pkg) {
+        if (pkg.equals(sForeground)) return;
+        sForeground = pkg;
+        if (sCtx != null) applyFor(sCtx, pkg);
     }
 
     /** Qualcomm's allowlist: package, upscale (0-2), interp (0/1). Comments start with '#'. */

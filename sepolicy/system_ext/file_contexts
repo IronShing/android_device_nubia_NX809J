@@ -29,4 +29,5 @@
 # trips "process with updatable components exited 4 times".
 /system_ext/bin/hwcontrol       u:object_r:hwcontrol_exec:s0
 /system_ext/bin/slider_uewake   u:object_r:slider_uewake_exec:s0
+/dev/socket/slider_uewake       u:object_r:slider_uewake_socket:s0
 /system_ext/bin/loudness         u:object_r:loudness_exec:s0

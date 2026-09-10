@@ -20,6 +20,18 @@
  *   sys.rm.slider.event   monotonically increasing counter, so an observer can distinguish a
  *                         genuine re-toggle from a re-read of the same state
  *
+ * Push channel (added after the screen-off torch bug): properties are passive — nothing wakes a
+ * reader when one changes, and RedMagicControl had to poll them. With the screen off the SoC
+ * is suspended; the slider GPIO is a wakeup source, so the kernel and this daemon see the slide,
+ * but the SoC is back asleep before the app's next poll tick, and the action fired only on the
+ * next unrelated wakeup (the user tapping the screen). Two things fix that:
+ *   1. every slide takes a short kernel wake lock (/sys/power/wake_lock, timed), so the SoC
+ *      stays up long enough for the consumer to act;
+ *   2. the event is pushed down an init-owned socket (/dev/socket/slider_uewake): one line
+ *      "<state> <seq>\n" per slide to every connected client. A blocked read() is woken by the
+ *      kernel the instant we write, so the app needs no poll at all. The properties stay as
+ *      the resync source (a client reads them when it connects).
+ *
  * NOTE on the device node: the hardware reference doc says /dev/input/event1, which is WRONG on
  * this device — event1 is the shoulder-trigger SAR sensor, and the slider is event3. Node numbers
  * are not stable across kernels/boots anyway, so we scan by device name instead of hardcoding.
@@ -33,8 +45,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
+#include <sys/socket.h>
 #include <sys/system_properties.h>
 #include <unistd.h>
+
+#include <cutils/sockets.h>
 
 #define LOG_TAG "slider_uewake"
 #include <log/log.h>
@@ -51,6 +67,16 @@
  * this one lives here because only a real input device is visible to key remappers. */
 #define MODE_KEYCODE 4
 #define PROP_EVENT "sys.rm.slider.event"
+
+/* Name in the init .rc "socket" line; init creates /dev/socket/slider_uewake and hands us the
+ * listening fd through the environment. */
+#define CTL_SOCKET "slider_uewake"
+#define MAX_CLIENTS 4
+
+/* How long the SoC is kept awake after a slide, in ns. The app grabs its own wake lock as soon
+ * as it reads the event, so this only has to cover scheduling + one socket round trip; 2 s is
+ * generous. A timed lock needs no matching unlock, so a daemon crash cannot pin the SoC awake. */
+#define WAKE_LOCK_NS "2000000000"
 
 static int test_bit(const unsigned long *arr, int bit) {
     return (arr[bit / (8 * sizeof(long))] >> (bit % (8 * sizeof(long)))) & 1;
@@ -164,19 +190,74 @@ static void inject_keycode(int state) {
     ALOGI("slider -> keycode %d (state %d)", code, state ? 1 : 0);
 }
 
+/* Timed kernel wake lock. Needs CAP_BLOCK_SUSPEND (rc: capabilities BLOCK_SUSPEND) and
+ * sepolicy wakelock_use(). Logged once on failure, not per slide. */
+static void hold_awake(void) {
+    static int warned;
+    int fd = open("/sys/power/wake_lock", O_WRONLY | O_CLOEXEC);
+    if (fd < 0 || write(fd, "slider_uewake " WAKE_LOCK_NS, sizeof("slider_uewake " WAKE_LOCK_NS) - 1) < 0) {
+        if (!warned) { warned = 1; ALOGE("wake_lock: %s (screen-off slides may be delayed)", strerror(errno)); }
+    }
+    if (fd >= 0) close(fd);
+}
+
+static int g_clients[MAX_CLIENTS];
+
+static void client_drop(int i) {
+    close(g_clients[i]);
+    g_clients[i] = -1;
+}
+
+/* One line per slide to everyone connected. A client that cannot take it (gone, or wedged with
+ * a full buffer -- the sockets are non-blocking) is dropped; it reconnects and resyncs from the
+ * properties. */
+static void notify_clients(int state, unsigned long seq) {
+    char line[48];
+    int n = snprintf(line, sizeof(line), "%d %lu\n", state ? 1 : 0, seq);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (g_clients[i] < 0) continue;
+        if (send(g_clients[i], line, n, MSG_NOSIGNAL | MSG_DONTWAIT) != n) {
+            ALOGW("client %d dropped: %s", i, strerror(errno));
+            client_drop(i);
+        }
+    }
+}
+
 static void publish(int state, unsigned long *seq) {
     char buf[32];
+    hold_awake();
     snprintf(buf, sizeof(buf), "%d", state ? 1 : 0);
     __system_property_set(PROP_STATE, buf);
     snprintf(buf, sizeof(buf), "%lu", ++(*seq));
     __system_property_set(PROP_EVENT, buf);
+    notify_clients(state, *seq);
     ALOGI("slider -> %d (seq %lu)", state ? 1 : 0, *seq);
+}
+
+static void accept_client(int lfd) {
+    int c = accept4(lfd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    if (c < 0) { ALOGE("accept: %s", strerror(errno)); return; }
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (g_clients[i] < 0) { g_clients[i] = c; ALOGI("client %d connected", i); return; }
+    }
+    ALOGW("too many clients, refusing one");
+    close(c);
 }
 
 int main(void) {
     unsigned long seq = 0;
     int last = -1;   /* last PUBLISHED state; -1 = nothing published yet */
     int fd = -1;
+    for (int i = 0; i < MAX_CLIENTS; i++) g_clients[i] = -1;
+
+    /* Listening socket created by init (rc "socket" line). Optional: without it the daemon
+     * still publishes properties, the app just falls back to its slow poll. */
+    int lfd = android_get_control_socket(CTL_SOCKET);
+    if (lfd < 0 || listen(lfd, MAX_CLIENTS) < 0) {
+        ALOGE("control socket '%s' unavailable: %s", CTL_SOCKET, strerror(errno));
+        if (lfd >= 0) close(lfd);
+        lfd = -1;
+    }
 
     for (;;) {
         if (fd < 0) {
@@ -193,24 +274,57 @@ int main(void) {
             }
         }
 
-        struct input_event ev;
-        ssize_t n = read(fd, &ev, sizeof(ev));
-        if (n == (ssize_t)sizeof(ev)) {
-            /* The driver re-reports the switch several times per physical slide (measured on
-             * hardware: 2-3 EV_SW events for one movement). Publish only on an actual CHANGE,
-             * otherwise a consumer that acts on sys.rm.slider.event would fire its action
-             * two or three times for a single slide. */
-            if (ev.type == EV_SW && ev.code == SLIDER_SW) {
-                int v = ev.value ? 1 : 0;
-                /* inject only on a genuine slide, never on the startup resync below, or the
-                 * phone would emit a phantom key every boot and after every daemon restart. */
-                if (v != last) { last = v; publish(v, &seq); inject_keycode(v); }
-            }
-        } else if (n < 0 && errno != EINTR) {
-            ALOGE("read: %s — reopening", strerror(errno));
-            close(fd);
-            fd = -1;
+        struct pollfd pfd[2 + MAX_CLIENTS];
+        int np = 0;
+        pfd[np++] = (struct pollfd){ .fd = fd, .events = POLLIN };
+        if (lfd >= 0) pfd[np++] = (struct pollfd){ .fd = lfd, .events = POLLIN };
+        int cidx[MAX_CLIENTS], nc = 0;
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (g_clients[i] < 0) continue;
+            /* clients never send anything; readiness here means hangup */
+            cidx[nc++] = i;
+            pfd[np++] = (struct pollfd){ .fd = g_clients[i], .events = POLLIN | POLLHUP };
+        }
+
+        if (poll(pfd, np, -1) < 0) {
+            if (errno == EINTR) continue;
+            ALOGE("poll: %s", strerror(errno));
             sleep(1);
+            continue;
+        }
+
+        int pi = 0;
+        if (pfd[pi++].revents) {
+            struct input_event ev;
+            ssize_t n = read(fd, &ev, sizeof(ev));
+            if (n == (ssize_t)sizeof(ev)) {
+                /* The driver re-reports the switch several times per physical slide (measured on
+                 * hardware: 2-3 EV_SW events for one movement). Publish only on an actual CHANGE,
+                 * otherwise a consumer that acts on sys.rm.slider.event would fire its action
+                 * two or three times for a single slide. */
+                if (ev.type == EV_SW && ev.code == SLIDER_SW) {
+                    int v = ev.value ? 1 : 0;
+                    /* inject only on a genuine slide, never on the startup resync above, or the
+                     * phone would emit a phantom key every boot and after every daemon restart. */
+                    if (v != last) { last = v; publish(v, &seq); inject_keycode(v); }
+                }
+            } else if (n < 0 && errno != EINTR && errno != EAGAIN) {
+                ALOGE("read: %s — reopening", strerror(errno));
+                close(fd);
+                fd = -1;
+                sleep(1);
+                continue;
+            }
+        }
+        if (lfd >= 0 && pfd[pi++].revents) accept_client(lfd);
+        for (int k = 0; k < nc; k++) {
+            if (!pfd[pi + k].revents) continue;
+            char junk[16];
+            ssize_t r = recv(g_clients[cidx[k]], junk, sizeof(junk), MSG_DONTWAIT);
+            if (r <= 0 && !(r < 0 && errno == EAGAIN)) {
+                ALOGI("client %d disconnected", cidx[k]);
+                client_drop(cidx[k]);
+            }
         }
     }
     return 0;

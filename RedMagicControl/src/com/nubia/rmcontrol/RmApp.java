@@ -69,10 +69,22 @@ public class RmApp extends Application {
         // Game super-resolution / frame interpolation (Qualcomm GPP on the NPU). The live
         // vendor.gpp.* properties do not persist, so re-issue the user's choice every boot.
         GamePostProcessing.apply();
+        // ...and follow the foreground task so the per-game switches (emulators off, an
+        // unlisted game on) are pushed before each app draws its first frame.
+        GamePostProcessing.start(this);
 
         // Bundled MagicDesk needs display-over-apps. Doing it here saves it asking Shizuku for
         // something we can grant directly; it is a no-op once the op has any explicit value.
         DesktopIntegration.grantOverlayOpIfUntouched(this);
+
+        // Privacy guard: publish the per-app camera/mic/location rules (the framework patch
+        // applies them at boot on its own; this re-arms the "allow for 10 min" expiry alarm)
+        // and watch for blocked attempts to offer the temporary allowance.
+        PrivacyGuard.start(this);
+        OtpSms.start(this);
+
+        // Do Not Disturb => every RGB zone dark, fan-ring glow included (persist.sys.rm.lights_quiet).
+        QuietLights.start(this);
 
         final ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm == null) {

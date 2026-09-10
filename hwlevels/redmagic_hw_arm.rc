@@ -87,32 +87,17 @@ on property:sys.rm.haptic_test=*
 # guide: "The fan power rail must be enabled before LED commands will work. The fan
 # motor doesn't need to be spinning -- just the enable signal."
 # We raise the rail only; fan_speed_level is untouched, so the fan does NOT spin.
-on property:persist.sys.rm.led.logo=*
+on property:persist.sys.rm.led.logo=* && property:persist.sys.rm.lights_quiet=0
     write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.logo}
     write /sys/class/leds/aw22xxx_led/cfg 1
-on property:persist.sys.rm.led.shoulder=*
+on property:persist.sys.rm.led.shoulder=* && property:persist.sys.rm.lights_quiet=0
     write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.shoulder}
     write /sys/class/leds/aw22xxx_led/cfg 1
-on property:persist.sys.rm.led.fan=*
+on property:persist.sys.rm.led.fan=* && property:persist.sys.rm.lights_quiet=0
     write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan}
-    write /sys/class/leds/aw22xxx_led/cfg 1
-
-# ---- Fan-ring RGB follows the auto fan ----
-# hwcontrol publishes fan_rgb.active while the automatic fan is actually spinning, plus
-# fan_rgb.value = the user's own fan-ring colour/effect (or steady red if that zone is off).
-# It deliberately never writes persist.sys.rm.led.fan, so releasing just replays the user's
-# own value -- same shape as chargecool.active above, and there is no saved state to drift.
-on property:persist.sys.rm.fan_rgb.active=1
-    write /sys/kernel/fan/fan_enable 1
-    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.fan_rgb.value:-0x3002001}
-    write /sys/class/leds/aw22xxx_led/cfg 1
-
-on property:persist.sys.rm.fan_rgb.active=0
-    write /sys/kernel/fan/fan_enable 1
-    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan:-0}
     write /sys/class/leds/aw22xxx_led/cfg 1
 
 # ---- Game mode cooling (baked in — NOT a module) ----
@@ -221,11 +206,45 @@ on property:sys.boot_completed=1
 # All three zones are written, then committed once: per the hardware guide, "each zone is
 # set independently -- write all zones before committing to apply them together".
 # Defaults are 0 (= m_led_off) so a zone the user never configured stays off.
-on property:sys.rm.settings_rev=*
+on property:sys.rm.settings_rev=* && property:persist.sys.rm.lights_quiet=0
     write /sys/kernel/fan/fan_enable 1
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.logo:-0}
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.shoulder:-0}
     write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan:-0}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+
+# ---- Fan-ring RGB follows the auto fan ----
+# hwcontrol publishes fan_rgb.active while the automatic fan is actually spinning, plus
+# fan_rgb.value = the user's own fan-ring colour/effect (or steady red if that zone is off).
+# It deliberately never writes persist.sys.rm.led.fan, so releasing just replays the user's
+# own value -- same shape as chargecool.active above, and there is no saved state to drift.
+on property:persist.sys.rm.fan_rgb.active=1 && property:persist.sys.rm.lights_quiet=0
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.fan_rgb.value:-0x3002001}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+
+on property:persist.sys.rm.fan_rgb.active=0 && property:persist.sys.rm.lights_quiet=0
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/class/leds/aw22xxx_led/effect ${persist.sys.rm.led.fan:-0}
+    write /sys/class/leds/aw22xxx_led/cfg 1
+
+# ---- Do Not Disturb: lights out (2026-09-08) ----
+# RedMagicControl (QuietLights) derives persist.sys.rm.lights_quiet = 1 while an interruption
+# filter other than "all" is active AND its "All lights off during Do Not Disturb" switch is on.
+# EVERY LED trigger above carries "&& property:persist.sys.rm.lights_quiet=0", so while quiet
+# nothing may relight a zone: not a colour edit, not settings_rev, not hwcontrol raising
+# fan_rgb.active when the auto fan spins up at night. Init evaluates a chained trigger whenever
+# ANY of its properties changes, so the moment lights_quiet drops back to 0 all the gated
+# actions re-fire in file order (user zones, settings_rev replay, then fan_rgb so a still-active
+# ring glow wins) -- restoring the user's own values with no state kept anywhere.
+# An UNSET property never matches "=0", so on the first boot after the update the zones would
+# stay dark until the app first ran; hwcontrol seeds lights_quiet=0 at its start when it is
+# unset (vendor_init cannot setprop rm_ctrl_prop -- see the chargecool note below).
+on property:persist.sys.rm.lights_quiet=1
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/class/leds/aw22xxx_led/effect 0x1000000
+    write /sys/class/leds/aw22xxx_led/effect 0x2000000
+    write /sys/class/leds/aw22xxx_led/effect 0x3000000
     write /sys/class/leds/aw22xxx_led/cfg 1
 
 # ---- charge cooling (fan/pump ownership fix, 2026-08-27) ----

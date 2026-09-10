@@ -38,6 +38,22 @@
     <uses-permission android:name="android.permission.WRITE_DEVICE_CONFIG" />
     <uses-permission android:name="android.permission.READ_DEVICE_CONFIG" />
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- Privacy guard (PrivacyGuard.java).
+         WATCH_APPOPS is signature|privileged -> it IS listed in
+         permissions/privapp-permissions-com.nubia.rmcontrol.xml (missing entry = boot-loop).
+         It delivers the rejected camera/mic/location attempts for the "Allow for 10 min"
+         notification. The blocking itself needs nothing here: the rules go to
+         Settings.Secure rm_privacy_guard (WRITE_SECURE_SETTINGS above) and the
+         PermissionPolicyService patch in frameworks/base enforces them.
+         POST_NOTIFICATIONS: runtime; self-granted at start with GRANT_RUNTIME_PERMISSIONS
+         (signature|installer|verifier -> platform cert, no allowlist entry). The same grant
+         permission hands RECORD_AUDIO/POST_NOTIFICATIONS to the VoIP call recorder engine
+         when its switch in this app is turned on. -->
+    <uses-permission android:name="android.permission.WATCH_APPOPS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.GRANT_RUNTIME_PERMISSIONS" />
+    <!-- OTP-in-SMS copy helper: read incoming SMS to detect one-time codes (self-granted) -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <application
         android:name=".RmApp"
@@ -122,5 +138,22 @@
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
+        <!-- Privacy guard: per-app camera / mic / location block the app cannot detect. -->
+        <service android:name=".PrivacyTile" android:label="@string/tile_privacy" android:icon="@drawable/ic_privacy"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <receiver android:name=".PrivacyGuardReceiver" android:exported="false" />
+        <receiver android:name=".OtpSmsReceiver" android:exported="true"
+                android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="900">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+        <!-- PackageGuardReceiver (auto-guard new installs) is registered at runtime from
+             PrivacyGuard.start(): a manifest receiver never gets the implicit PACKAGE_ADDED. -->
+        <receiver android:name=".OtpCopyReceiver" android:exported="false">
+            <intent-filter><action android:name="com.nubia.rmcontrol.OTP_COPY" /></intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -4,10 +4,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.PowerManager;
 import android.os.SystemProperties;
 import android.util.Log;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 /**
  * Magic Slider handler.
@@ -34,6 +40,15 @@ import android.util.Log;
  * We trigger on the .event counter rather than on .state, so sliding to the same position twice
  * (or a re-read after a daemon restart) cannot double-fire. The daemon already de-duplicates
  * repeated EV_SW reports, so one physical slide = one increment = one action.
+ *
+ * Delivery: the daemon also pushes every slide down /dev/socket/slider_uewake, and a thread here
+ * blocks on it. That is what makes the torch work with the screen OFF: a property poll only
+ * runs while the SoC is awake, and after a screen-off slide the SoC (woken by the slider GPIO)
+ * was back in suspend before the next 400 ms tick -- so the light came on at the next unrelated
+ * wakeup, i.e. when the user tapped the screen. A blocked socket read is woken by the kernel
+ * the moment the daemon writes, the daemon holds a timed kernel wake lock across the hand-off,
+ * and we hold a partial wake lock while acting. The property poll stays only as a slow safety
+ * net for a build where the socket is missing.
  */
 final class SliderWatcher {
 
@@ -70,19 +85,32 @@ final class SliderWatcher {
     static final String PROP_KEY_OFF = "persist.sys.rm.slider.key_off";
 
     private final Context mCtx;
+    private final PowerManager.WakeLock mWake;
     private String mLastEvent;
     /** One-shot proof that the property callback is actually being delivered to this process. */
     private boolean mSawCallback;
 
     private SliderWatcher(Context ctx) {
         mCtx = ctx.getApplicationContext();
+        final PowerManager pm = mCtx.getSystemService(PowerManager.class);
+        mWake = pm == null ? null
+                : pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RMControl:slider");
+        if (mWake != null) mWake.setReferenceCounted(false);
         // Seed from the current counter so we do not fire for the state the daemon published at
         // boot — the user has not touched the slider yet at that point.
         mLastEvent = Prop.get(PROP_EVENT, "");
     }
 
-    /** How often we re-read the counter. A property read is a shared-memory read, not IPC. */
-    private static final long POLL_MS = 400L;
+    /**
+     * Fallback poll period. The socket below is the real delivery path; this only catches a
+     * build where the daemon has no socket. A property read is a shared-memory read, not IPC.
+     */
+    private static final long POLL_MS = 2000L;
+
+    /** init-created push socket, see slider_uewake.rc. */
+    private static final String SOCKET = "slider_uewake";
+    /** Upper bound on how long a slide's action may keep the SoC awake. */
+    private static final long ACTION_WAKE_MS = 3000L;
 
     static void start(Context ctx) {
         final SliderWatcher w = new SliderWatcher(ctx);
@@ -96,6 +124,10 @@ final class SliderWatcher {
         } catch (Throwable t) {
             Log.e(TAG, "addChangeCallback unavailable; polling only", t);
         }
+
+        final Thread sock = new Thread(w::socketLoop, "slider-sock");
+        sock.setDaemon(true);
+        sock.start();
 
         final HandlerThread th = new HandlerThread("slider-poll");
         th.start();
@@ -114,6 +146,47 @@ final class SliderWatcher {
                 h.postDelayed(this, POLL_MS);
             }
         });
+    }
+
+    /**
+     * Blocks on the daemon's push socket forever; reconnects with backoff. The daemon is off
+     * (connection refused) whenever persist.sys.rm.slider.enabled is 0, so the retry is capped
+     * at 30 s -- a refused unix connect costs microseconds, and the poll covers the gap.
+     */
+    private void socketLoop() {
+        long backoff = 1000L;
+        for (;;) {
+            try (LocalSocket ls = new LocalSocket()) {
+                ls.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.RESERVED));
+                Log.i(TAG, "slider socket connected");
+                backoff = 1000L;
+                final BufferedReader in =
+                        new BufferedReader(new InputStreamReader(ls.getInputStream()), 64);
+                String line;
+                while ((line = in.readLine()) != null) {
+                    // "<state> <seq>". We act through the same property path as the poll so
+                    // both routes share one de-duplicating sequence check; the line itself is
+                    // only the wake-up. The daemon sets the properties BEFORE it writes the
+                    // socket, so they are already current here.
+                    withWakeLock(this::onPropertiesChanged);
+                }
+                Log.w(TAG, "slider socket closed by daemon");
+            } catch (Throwable t) {
+                // Quiet on the expected case (daemon disabled -> ECONNREFUSED) after the first.
+                if (backoff == 1000L) Log.w(TAG, "slider socket: " + t);
+            }
+            try { Thread.sleep(backoff); } catch (InterruptedException e) { return; }
+            backoff = Math.min(backoff * 2, 30000L);
+        }
+    }
+
+    private void withWakeLock(Runnable r) {
+        if (mWake != null) mWake.acquire(ACTION_WAKE_MS);
+        try {
+            r.run();
+        } finally {
+            if (mWake != null && mWake.isHeld()) mWake.release();
+        }
     }
 
     // synchronized: reachable from both the (best-effort) property callback thread and the poll

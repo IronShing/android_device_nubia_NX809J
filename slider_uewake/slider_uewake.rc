@@ -7,6 +7,10 @@ service slider_uewake /system_ext/bin/slider_uewake
     class late_start
     user system
     group system input
+    # /sys/power/wake_lock (screen-off slides: keep the SoC up until the app has acted)
+    capabilities BLOCK_SUSPEND
+    # Push channel to RedMagicControl (SliderWatcher); labelled slider_uewake_socket
+    socket slider_uewake stream 0660 system system
     disabled
 
 on property:persist.sys.rm.slider.enabled=1

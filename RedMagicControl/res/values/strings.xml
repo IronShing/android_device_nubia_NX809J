@@ -13,6 +13,7 @@
     <string name="tile_touchpad">Touchpad</string>
     <string name="touchpad_title">Phone as touchpad</string>
     <string name="tile_monitor_only">Monitor only</string>
+    <string name="tile_privacy">Privacy guard</string>
     <string name="off">Off</string>
     <string name="on">On</string>
     <string name="level_low">Low</string>
