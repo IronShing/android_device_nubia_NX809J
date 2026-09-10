@@ -14,102 +14,66 @@ import android.util.Log;
 import java.util.concurrent.Executors;
 
 /**
- * Two roles, selected by intent action:
- *
- *  • MONITOR (default start) — the "notification-visible" mode. Runs persistently as a
- *    foreground service with a silent ongoing notification, watches the audio mode, and
- *    records inline when a VoIP call starts.
- *
- *  • RECORD  (ACTION_RECORD) — a single recording session started by CallNotificationListener
- *    in the "hide notification" mode. Foregrounds ONLY for the duration of the call (so the
- *    notification appears only while recording), then stops itself when the call ends.
+ * One recording session, started by CallDetector when an allow-listed VoIP call begins. It
+ * foregrounds as a MICROPHONE service (so the mic is not silenced and the OS shows that a call
+ * is being recorded) ONLY for the duration of the call, records both sides through CallRecorder,
+ * and stops itself when the audio mode leaves communication. Nothing here runs between calls --
+ * detection lives in CallDetector on the persistent process.
  */
 public class CallMonitorService extends Service {
     private static final String TAG = "VoipRecorder";
     private static final String CH = "voiprec";
     private static final int NOTIF = 42;
     static final String ACTION_RECORD = "com.nx809j.voiprecorder.RECORD";
+    static final String EXTRA_PKG = "pkg";
     private static final int FGS_TYPES =
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                     | ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
 
     private AudioManager am;
-    private Prefs prefs;
     private CallRecorder recorder;
     private volatile boolean recording;
     private boolean started;
-    private boolean sessionMode;
     private AudioManager.OnModeChangedListener modeListener;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
     @Override public void onCreate() {
         super.onCreate();
-        prefs = new Prefs(this);
         am = getSystemService(AudioManager.class);
         createChannel();
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        boolean wantSession = intent != null && ACTION_RECORD.equals(intent.getAction());
         if (!started) {
             started = true;
-            sessionMode = wantSession;
-            if (sessionMode) startSession(); else startMonitor();
+            startForeground(NOTIF, buildNotif(), FGS_TYPES);
+            String pkg = intent != null ? intent.getStringExtra(EXTRA_PKG) : null;
+            appLabel = pkg == null ? "VoIP" : Util.appLabel(this, pkg);
+            startRecording(appLabel);
+            if (pkg != null) peekContact(pkg);
+            // Self-terminate when the call ends. The mode listener is event-driven and only
+            // registered for the length of the call, so it costs nothing between calls.
+            modeListener = mode -> { if (mode != AudioManager.MODE_IN_COMMUNICATION) endSession(); };
+            am.addOnModeChangedListener(Executors.newSingleThreadExecutor(), modeListener);
+            if (am.getMode() != AudioManager.MODE_IN_COMMUNICATION) endSession();  // ended already
         }
-        return sessionMode ? START_NOT_STICKY : START_STICKY;
+        return START_NOT_STICKY;
     }
 
     @Override public void onDestroy() {
-        try { am.removeOnModeChangedListener(modeListener); } catch (Exception ignored) {}
+        try { if (modeListener != null) am.removeOnModeChangedListener(modeListener); }
+        catch (Exception ignored) {}
         if (recording) stopRecording();
+        CallDetector.get(this).sessionEnded();
         super.onDestroy();
     }
 
-    // ---- MONITOR role (default / notification-visible mode) --------------------
-
-    private void startMonitor() {
-        startForeground(NOTIF, buildNotif(false), FGS_TYPES);
-        modeListener = this::onModeMonitor;
-        am.addOnModeChangedListener(Executors.newSingleThreadExecutor(), modeListener);
-        onModeMonitor(am.getMode());        // catch a call already in progress
-        Log.i(TAG, "monitor up");
-    }
-
-    private synchronized void onModeMonitor(int mode) {
-        boolean inCall = (mode == AudioManager.MODE_IN_COMMUNICATION);
-        if (inCall && !recording) {
-            if (!prefs.isEnabled() || !prefs.hasConsent()) return;
-            String pkg = Util.foregroundApp(this);
-            if (!Util.shouldRecord(prefs, pkg)) return;
-            startRecording(pkg == null ? "voip" : pkg);
-            notif().notify(NOTIF, buildNotif(true));
-        } else if (!inCall && recording) {
-            stopRecording();
-            notif().notify(NOTIF, buildNotif(false));
-        }
-    }
-
-    // ---- RECORD role (single session, "hide notification" mode) ---------------
-
-    private void startSession() {
-        startForeground(NOTIF, buildNotif(true), FGS_TYPES);
-        String pkg = Util.foregroundApp(this);
-        startRecording(pkg == null ? "voip" : pkg);
-        // self-terminate when the call ends
-        modeListener = mode -> { if (mode != AudioManager.MODE_IN_COMMUNICATION) endSession(); };
-        am.addOnModeChangedListener(Executors.newSingleThreadExecutor(), modeListener);
-        Log.i(TAG, "record session up");
-    }
-
     private synchronized void endSession() {
-        if (recording) stopRecording();
-        try { am.removeOnModeChangedListener(modeListener); } catch (Exception ignored) {}
+        if (!started) return;
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
-
-    // ---- shared recording ------------------------------------------------------
 
     private void startRecording(String tag) {
         recorder = new CallRecorder(this);
@@ -125,33 +89,59 @@ public class CallMonitorService extends Service {
         recording = false;
         if (recorder != null) {
             recorder.stop();
-            Log.i(TAG, "saved: " + recorder.getOutputFile());
+            java.io.File out = recorder.getOutputFile();
+            // Name the file "<App> - <Contact> (stamp).wav" now that the contact is known.
+            String c = contact;
+            if (c != null && out != null && out.exists()) {
+                java.io.File named = new java.io.File(out.getParentFile(),
+                        CallRecorder.fileName(appLabel + " - " + c, out.getName()));
+                if (out.renameTo(named)) out = named;
+            }
+            Log.i(TAG, "saved: " + out);
             recorder = null;
         }
     }
 
-    // ---- notification ----------------------------------------------------------
+    private String appLabel;
+    private volatile String contact;
+
+    /**
+     * The app's call notification carries the contact's name; it can lag the mic by a few
+     * seconds, so look twice. Off the main thread: the peek blocks on a listener rebind.
+     */
+    private void peekContact(final String pkg) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            for (int delay : new int[] { 2500, 6000 }) {
+                try { Thread.sleep(delay); } catch (InterruptedException e) { return; }
+                if (!recording) return;
+                String c = CallNotifPeek.peekTitle(this, pkg, 2000);
+                if (c != null && !c.isEmpty()) {
+                    contact = Util.fileSafe(c);
+                    Log.i(TAG, "call with: " + contact);
+                    notif().notify(NOTIF, buildNotif());
+                    return;
+                }
+            }
+        });
+    }
 
     private NotificationManager notif() { return getSystemService(NotificationManager.class); }
 
     private void createChannel() {
         NotificationChannel c = new NotificationChannel(CH, "Call recorder",
-                NotificationManager.IMPORTANCE_LOW);   // OS forces FGS notifs to >= LOW anyway
+                NotificationManager.IMPORTANCE_LOW);
         c.setShowBadge(false);
         notif().createNotificationChannel(c);
     }
 
-    private Notification buildNotif(boolean active) {
+    private Notification buildNotif() {
         PendingIntent pi = PendingIntent.getActivity(this, 0,
                 new Intent(this, RecordingsActivity.class), PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CH)
-                .setSmallIcon(active
-                        ? android.R.drawable.ic_btn_speak_now
-                        : android.R.drawable.stat_notify_voicemail)
-                .setContentTitle(active ? "● Recording call" : "Call recorder active")
-                .setContentText(active
-                        ? "Recording this VoIP call"
-                        : "Auto-records allow-listed VoIP calls")
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setContentTitle("● Recording call")
+                .setContentText(contact != null ? appLabel + " call with " + contact
+                        : "Recording this " + (appLabel == null ? "VoIP" : appLabel) + " call")
                 .setOngoing(true)
                 .setContentIntent(pi)
                 .build();

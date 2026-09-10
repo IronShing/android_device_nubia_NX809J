@@ -16,7 +16,7 @@ import java.io.RandomAccessFile;
 
 /**
  * Captures both sides of a VoIP call and writes a 16-bit / 48 kHz stereo WAV:
- *   Left  channel = uplink   (your mic, echo-cancelled VOICE_COMMUNICATION source)
+ *   Left  channel = uplink   (your mic, plain MIC source — see start())
  *   Right channel = downlink (the other party, USAGE_VOICE_COMMUNICATION output
  *                             tapped via a dynamic AudioPolicy loop-back mix)
  *
@@ -28,6 +28,8 @@ final class CallRecorder {
     private static final String TAG = "VoipRecorder";
     private static final int SR = 48000;
     private static final int FRAMES = 1024;              // per read
+    /** Size of a .wav that holds only the header, i.e. a session that captured nothing. */
+    static final int WAV_HEADER_BYTES = 44;
 
     private final Context ctx;
     private AudioRecord upRec;                            // mic
@@ -58,7 +60,10 @@ final class CallRecorder {
                 .build();
         AudioMix mix = new AudioMix.Builder(rule)
                 .setFormat(mixFmt)
-                .setRouteFlags(AudioMix.ROUTE_FLAG_LOOP_BACK)   // capture a copy; call still plays
+                // LOOP_BACK alone REROUTES every USAGE_VOICE_COMMUNICATION player to the
+                // remote-submix (the earpiece/speaker goes silent for the whole call);
+                // LOOP_BACK|RENDER tees a copy (APM secondary mix) and keeps rendering.
+                .setRouteFlags(AudioMix.ROUTE_FLAG_LOOP_BACK_RENDER)
                 .build();
         policy = new AudioPolicy.Builder(ctx).addMix(mix).build();
         int r = am.registerAudioPolicy(policy);
@@ -74,10 +79,14 @@ final class CallRecorder {
             return false;
         }
 
-        // ---- uplink: VOICE_COMMUNICATION mic ----
+        // ---- uplink: plain MIC source ----
+        // NOT VOICE_COMMUNICATION: that source is privacy-sensitive, and the concurrent-capture
+        // policy hands the sensitive slot to the MODE_IN_COMMUNICATION owner (the VoIP app), so
+        // our background capture was silenced (all-zero left channel). A non-sensitive source
+        // plus CAPTURE_AUDIO_OUTPUT (canBypassConcurrentPolicy) is allowed alongside it.
         int minBuf = AudioRecord.getMinBufferSize(SR, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT);
-        upRec = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, SR,
+        upRec = new AudioRecord(MediaRecorder.AudioSource.MIC, SR,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 Math.max(minBuf, FRAMES * 2 * 4));
         if (upRec.getState() != AudioRecord.STATE_INITIALIZED) {
@@ -148,6 +157,12 @@ final class CallRecorder {
             if (raf != null) {
                 try { writeWavHeader(raf, dataBytes); raf.close(); } catch (Exception ignored) {}
             }
+            if (dataBytes == 0) {
+                // Nothing came through either capture (e.g. a modem call, whose audio never
+                // passes AudioFlinger): keep no header-only file around.
+                Log.w(TAG, "no audio captured, discarding " + outFile);
+                outFile.delete();
+            }
         }
     }
 
@@ -163,13 +178,24 @@ final class CallRecorder {
         upRec = null; downRec = null; policy = null;
     }
 
+    /** Recordings are named "<App> - <Contact> (yyyyMMdd_HHmmss).wav"; the stamp is the start. */
+    static final java.util.regex.Pattern NAME =
+            java.util.regex.Pattern.compile("^(.*) \\((\\d{8}_\\d{6})\\)\\.wav$");
+
     private static File newOutFile(String tag) {
         File dir = new File(android.os.Environment.getExternalStorageDirectory(), "CallRecordings");
         if (!dir.exists()) dir.mkdirs();
         String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss",
                 java.util.Locale.US).format(new java.util.Date());
-        String safe = tag == null ? "voip" : tag.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return new File(dir, safe + "_" + stamp + ".wav");
+        return new File(dir, fileName(tag, stamp));
+    }
+
+    /** "<tag> (stamp).wav"; stampOrName may be a previous file name whose stamp is reused. */
+    static String fileName(String tag, String stampOrName) {
+        java.util.regex.Matcher m = NAME.matcher(stampOrName);
+        String stamp = m.matches() ? m.group(2) : stampOrName;
+        String safe = Util.fileSafe(tag);
+        return (safe.isEmpty() ? "VoIP" : safe) + " (" + stamp + ").wav";
     }
 
     private static void writeWavHeader(RandomAccessFile raf, long dataBytes) throws Exception {

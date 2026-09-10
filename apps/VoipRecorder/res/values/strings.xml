@@ -1,15 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VoIP Call Recorder</string>
-    <string name="recordings_title">Recordings</string>
-    <string name="enable_label">Auto-record VoIP calls</string>
-    <string name="all_voip_label">Record all VoIP apps (not just WhatsApp)</string>
-    <string name="hide_notif_label">Hide notification (no permanent notification; needs Notification access)</string>
-    <string name="grant_notif_access">Grant Notification access so recording can run without a permanent notification</string>
-    <string name="nls_label">Call detector (no-notification mode)</string>
-    <string name="enabled_toast">Auto-recording enabled</string>
-    <string name="status_on">● Active — allow-listed VoIP calls will be recorded to /sdcard/CallRecordings</string>
-    <string name="status_off">Off — no calls are being recorded</string>
+    <string name="recordings_title">Call recordings</string>
     <string name="no_recordings">No recordings yet</string>
     <string name="no_player">No audio player installed</string>
     <string name="delete_q">Delete recording?</string>
@@ -17,5 +9,4 @@
     <string name="selftest_running">Recording 15s… speak now</string>
     <string name="selftest_saved">Saved test recording:</string>
     <string name="selftest_fail">Recorder failed to start — check permissions / logcat</string>
-    <string name="consent_body">Records both sides of VoIP calls from WhatsApp (and, optionally, other calling apps) and saves them as WAV files in the CallRecordings folder.\n\nRecording a call may require the consent of everyone on the call. Laws differ by country and some places require all parties to agree. You are responsible for using this legally and for informing the other party. A notification is shown while any call is being recorded.\n\nOnly your mic (uplink) and the other party (downlink) are captured; nothing is uploaded anywhere.</string>
 </resources>

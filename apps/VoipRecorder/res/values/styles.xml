@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- No framework action bar: RecordingsActivity draws its own header and pads for the
+         system bars itself (see onCreate in the activity). -->
+    <style name="Theme.VoipRecorder" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

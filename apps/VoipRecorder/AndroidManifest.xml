@@ -13,10 +13,8 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_ROUTING"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
 
-    <!-- call detection -->
-    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
-    <!-- signature|privileged|appop: read the foreground app to identify the VoIP caller -->
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
+    <!-- call detection: watch the RECORD_AUDIO app-op of OTHER apps (signature|privileged) -->
+    <uses-permission android:name="android.permission.WATCH_APPOPS"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
 
     <!-- foreground service + notifications -->
@@ -24,7 +22,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+    <!-- "Record calls from X?" answers go into the Secure lists RM Control edits -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
+    <!-- self-enable the on-demand notification peek (contact name of the call) -->
+    <uses-permission android:name="android.permission.MANAGE_NOTIFICATION_LISTENERS"/>
 
     <!-- save recordings to shared storage -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
@@ -32,26 +34,31 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 
     <application
+        android:name=".RecorderApp"
+        android:persistent="true"
         android:label="@string/app_name"
         android:icon="@android:drawable/ic_btn_speak_now"
         android:theme="@android:style/Theme.DeviceDefault.DayNight"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="false">
 
-        <activity
-            android:name=".ConsentActivity"
-            android:exported="true"
-            android:label="@string/app_name">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-
+        <!-- No launcher entry: the switches and the consent text are in RedMagic Control
+             (Privacy tab), which also opens this browser. Exported only to holders of
+             WRITE_SECURE_SETTINGS (i.e. RM Control / Settings), not to third-party apps. -->
         <activity
             android:name=".RecordingsActivity"
-            android:exported="false"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS"
+            android:theme="@style/Theme.VoipRecorder"
             android:label="@string/recordings_title"/>
+
+        <!-- Serves /sdcard/CallRecordings/*.wav to the player picked by ACTION_VIEW
+             (file:// URIs are blocked by StrictMode on a current targetSdk). -->
+        <provider
+            android:name=".RecordingProvider"
+            android:authorities="com.nx809j.voiprecorder.recordings"
+            android:exported="false"
+            android:grantUriPermissions="true"/>
 
         <service
             android:name=".CallMonitorService"
@@ -62,25 +69,19 @@
                 android:value="Auto-records allow-listed VoIP calls in the background"/>
         </service>
 
-        <!-- "Hide notification" mode: persistent, no-notification detection host.
-             Bound by the system only after the user grants Notification access. -->
+        <!-- Bound only for the seconds it takes to read the calling app's ongoing-call
+             notification (contact name); unbinds itself when idle. -->
         <service
-            android:name=".CallNotificationListener"
+            android:name=".CallNotifPeek"
             android:exported="true"
-            android:label="@string/nls_label"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService"/>
             </intent-filter>
+            <meta-data android:name="android.service.notification.default_filter_types"
+                android:value="ongoing"/>
         </service>
 
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
-            </intent-filter>
-        </receiver>
+        <receiver android:name=".DecisionReceiver" android:exported="false"/>
     </application>
 </manifest>
