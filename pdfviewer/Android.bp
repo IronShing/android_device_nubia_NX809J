@@ -1,0 +1,14 @@
+// GrapheneOS PDF Viewer (app.grapheneos.pdfviewer), the authors' unmodified release APK.
+// Replaces LineageOS Camelot, which does not open PDFs on this device. Presigned so the user
+// can update it straight from GitHub/Play over the top (lands in /data as a normal update).
+// Provenance: see README.md in this directory.
+android_app_import {
+    name: "PdfViewer",
+    apk: "PdfViewer.apk",
+    presigned: true,
+    preprocessed: true,      // targetSdk 37, v2-signed, extractNativeLibs=false with stored libs
+    product_specific: true,  // -> /product/app/PdfViewer
+    dex_preopt: {
+        enabled: false,
+    },
+}
