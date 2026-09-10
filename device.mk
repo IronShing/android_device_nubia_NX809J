@@ -442,6 +442,9 @@ include $(LOCAL_PATH)/vendor_source_extras.mk
 # Qualcomm GPP (NPU super-resolution / frame interpolation for games)
 include $(LOCAL_PATH)/gpp.mk
 
+# Wi-Fi Display (Miracast) source — see wfd.mk
+include $(LOCAL_PATH)/wfd.mk
+
 
 # Overlays — see the desktop-mode block above. The framework-res overlay is now a
 # static PRODUCT_PACKAGE_OVERLAYS (baked into framework-res.apk in system), replacing
@@ -707,17 +710,37 @@ endif
 # through flash_super_dev.sh when it has no key baked. Requires GMS (Velvet is useless on
 # microG), so it is a no-op there.
 # 2026-09-04: PERSONAL also = Minimal + Android Auto (android_auto.mk, gated in
-# evolution_NX809J.mk) + Fermata Auto (prebuilt/FermataAuto, YouTube on the head unit).
+# evolution_NX809J.mk). Fermata Auto was shipped here 09-04..09-09 and dropped: its
+# MirrorDisplay rewrites Settings.System.accelerometer_rotation around every car mirror
+# session (never restores user_rotation), which is what kept re-enabling auto-rotate.
 ifeq ($(NX809J_PERSONAL),true)
 ifneq ($(NX809J_MICROG),true)
 PRODUCT_PACKAGES += \
     Velvet
 PRODUCT_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay-personal
-ifneq ($(wildcard device/nubia/NX809J/prebuilt/FermataAuto/FermataAuto.apk),)
-PRODUCT_PACKAGES += \
-    FermataAuto
-else
-$(warning NX809J: prebuilt/FermataAuto/FermataAuto.apk absent - personal build without Fermata Auto)
 endif
 endif
-endif
+
+# Gesture (swipe) typing for the LineageOS LatinIME keyboard. AOSP's native gesture decoder is
+# a stub, so `config_gesture_input_enabled_by_build_config=true` alone only shows the setting.
+# LatinIME's JniUtils tries System.loadLibrary("jni_latinimegoogle") first and falls back to the
+# AOSP libjni_latinime.so; the Google lib is a drop-in superset with identical JNI class names
+# and native signatures (verified 2026-09-09 against packages/inputmethods/LatinIME). The
+# app's native search path is its own lib dir (/product/app/LatinIME/lib/arm64 — where Soong
+# symlinks libjni_latinime.so), so the file is dropped there directly: no public.libraries.txt
+# entry, no cross-namespace Soong module, and the old sign-script /system bake (which the
+# prebuilt-IMAGES flow silently discarded) is no longer needed. ELF copy permitted by
+# BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES (BoardConfig.mk). Device-verified 2026-09-09
+# via an adb-installed LatinIME carrying the same lib: only libjni_latinimegoogle.so maps.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/lib64/libjni_latinimegoogle.so:$(TARGET_COPY_OUT_PRODUCT)/app/LatinIME/lib/arm64/libjni_latinimegoogle.so
+
+# Auto-brightness never DARKENS (brightens fine, stays bright walking into a dark room).
+# The stock DDC sets ambientLightHorizonLong=4000 but keeps AOSP's 8000 ms darkening
+# debounce. AmbientLightRingBuffer.prune() clamps the oldest sample to now-4000, so
+# nextAmbientLightDarkeningTransition() = (now-4000)+8000 is always in the future and
+# the darken branch can never fire (brightening works only because its 4000 ms debounce
+# equals the horizon). /product DDC files take precedence over /vendor, so ship a copy
+# with the AOSP-default 10000 ms horizon (shipped /vendor is a donor image, see notes).
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/displayconfig/display_id_4630947168392018835.xml:$(TARGET_COPY_OUT_PRODUCT)/etc/displayconfig/display_id_4630947168392018835.xml

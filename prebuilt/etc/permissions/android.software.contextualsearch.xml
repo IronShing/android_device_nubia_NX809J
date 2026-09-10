@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Circle to Search. ContextualSearchManagerService.isContextualSearchAvailable() and
+     Launcher3's ContextualSearchStateManager both gate on this system feature; without it the
+     nav-handle / home long-press never registers, no matter which package
+     config_defaultContextualSearchPackageName names. AOSP ships no copy of this file
+     (Pixels declare it in their device trees). Shipped only with the Google app (Velvet):
+     FullGApps + Personal, never Minimal/microG (see evolution_NX809J.mk). -->
+<permissions>
+    <feature name="android.software.contextualsearch" />
+</permissions>

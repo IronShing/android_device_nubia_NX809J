@@ -86,4 +86,14 @@
          6 GHz. Side benefit: the tethered AP currently negotiates 802.11n
          (SoftApInfo wifiStandard=4); with this it can use ax/be. -->
     <bool name="config_wifiSoftapIeee80211axSupported">true</bool>
+
+    <!-- ==================================================================
+         Wi-Fi Direct default device name (user request 2026-09-10). AOSP
+         advertises "Android_" + 4 random characters; WifiP2pServiceImpl
+         always appends a postfix (prefix + 4 random digits with the value
+         below), so peers see "RedMagic 11 Pro 4821". A name the user sets in
+         Settings > Wi-Fi > Wi-Fi Direct > Rename device still wins.
+         ================================================================== -->
+    <string name="config_wifiP2pDeviceNamePrefix">"RedMagic 11 Pro "</string>
+    <integer name="config_wifiP2pDeviceNamePostfixNumDigits">4</integer>
 </resources>

@@ -1,5 +1,5 @@
 # Android Auto plumbing. Inherited when NX809J_SHIP_AA=true (evolution_NX809J.mk, policy
-# 2026-09-04): FullGApps ships it; NX809J_PERSONAL=true (dev's Minimal + Fermata Auto) ships it;
+# 2026-09-04): FullGApps ships it; NX809J_PERSONAL=true (dev's Minimal) ships it;
 # published Minimal and microG builds ship no Android Auto at all.
 #
 # Why this exists (found 2026-09-02): on those builds the SYSTEM_AUTOMOTIVE_PROJECTION role had
@@ -29,7 +29,7 @@
 # Whether AA is fully usable against microG (account/phenotype calls) is NOT yet verified on
 # this device.
 #
-# Sideloaded car apps (Fermata Auto, CarStream -- YouTube on the head unit): AA only lists
+# Sideloaded car apps (e.g. CarStream -- YouTube on the head unit): AA only lists
 # third-party car apps whose install source is Play unless its hidden developer "Unknown
 # sources" toggle is on. frameworks/base ComputerEngine.getInstallSourceInfo reports Play as
 # the installer when the CALLER is gearhead, gated by persist.sys.aa_fake_installsource

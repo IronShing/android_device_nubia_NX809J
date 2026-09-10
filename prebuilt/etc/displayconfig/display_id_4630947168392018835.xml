@@ -1,0 +1,330 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<!--
+Copyright (c) 2021, The Linux Foundation. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution.
+    * Neither the name of The Linux Foundation nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
+ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
+IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+
+<!--
+Changes from Qualcomm Innovation Center are provided under the following license:
+Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+SPDX-License-Identifier: BSD-3-Clause-Clear
+-->
+
+<displayConfiguration>
+  <screenBrightnessMap interpolation="linear">
+    <point>
+      <value>0.0000</value>
+      <nits>3.5656</nits>
+    </point>
+    <point>
+      <value>0.0196</value>
+      <nits>4.0839</nits>
+    </point>
+    <point>
+      <value>0.0392</value>
+      <nits>4.9475</nits>
+    </point>
+    <point>
+      <value>0.0588</value>
+      <nits>5.9254</nits>
+    </point>
+    <point>
+      <value>0.0784</value>
+      <nits>7.0171</nits>
+    </point>
+    <point>
+      <value>0.098</value>
+      <nits>8.503</nits>
+    </point>
+    <point>
+      <value>0.1176</value>
+      <nits>11.6029</nits>
+    </point>
+    <point>
+      <value>0.1373</value>
+      <nits>15.0319</nits>
+    </point>
+    <point>
+      <value>0.1569</value>
+      <nits>18.7615</nits>
+    </point>
+    <point>
+      <value>0.1765</value>
+      <nits>22.9899</nits>
+    </point>
+    <point>
+      <value>0.1961</value>
+      <nits>27.4477</nits>
+    </point>
+    <point>
+      <value>0.2157</value>
+      <nits>33.7276</nits>
+    </point>
+    <point>
+      <value>0.2353</value>
+      <nits>40.1355</nits>
+    </point>
+    <point>
+      <value>0.2549</value>
+      <nits>46.8394</nits>
+    </point>
+    <point>
+      <value>0.2745</value>
+      <nits>55.0091</nits>
+    </point>
+    <point>
+      <value>0.2941</value>
+      <nits>63.032</nits>
+    </point>
+    <point>
+      <value>0.3137</value>
+      <nits>71.626</nits>
+    </point>
+    <point>
+      <value>0.3333</value>
+      <nits>80.9005</nits>
+    </point>
+    <point>
+      <value>0.3529</value>
+      <nits>90.7174</nits>
+    </point>
+    <point>
+      <value>0.3725</value>
+      <nits>101.4439</nits>
+    </point>
+    <point>
+      <value>0.3922</value>
+      <nits>112.7651</nits>
+    </point>
+    <point>
+      <value>0.4118</value>
+      <nits>125.3084</nits>
+    </point>
+    <point>
+      <value>0.4314</value>
+      <nits>138.4505</nits>
+    </point>
+    <point>
+      <value>0.451</value>
+      <nits>153.3287</nits>
+    </point>
+    <point>
+      <value>0.4706</value>
+      <nits>169.4664</nits>
+    </point>
+    <point>
+      <value>0.4902</value>
+      <nits>185.9423</nits>
+    </point>
+    <point>
+      <value>0.5098</value>
+      <nits>203.0642</nits>
+    </point>
+    <point>
+      <value>0.5294</value>
+      <nits>219.4539</nits>
+    </point>
+    <point>
+      <value>0.549</value>
+      <nits>236.8212</nits>
+    </point>
+    <point>
+      <value>0.5686</value>
+      <nits>254.955</nits>
+    </point>
+    <point>
+      <value>0.5882</value>
+      <nits>274.7769</nits>
+    </point>
+    <point>
+      <value>0.6078</value>
+      <nits>295.7729</nits>
+    </point>
+    <point>
+      <value>0.6275</value>
+      <nits>316.0061</nits>
+    </point>
+    <point>
+      <value>0.6471</value>
+      <nits>338.7526</nits>
+    </point>
+    <point>
+      <value>0.6667</value>
+      <nits>361.509</nits>
+    </point>
+    <point>
+      <value>0.6863</value>
+      <nits>385.7114</nits>
+    </point>
+    <point>
+      <value>0.7059</value>
+      <nits>410.4631</nits>
+    </point>
+    <point>
+      <value>0.7255</value>
+      <nits>435.5487</nits>
+    </point>
+    <point>
+      <value>0.7451</value>
+      <nits>462.3148</nits>
+    </point>
+    <point>
+      <value>0.7647</value>
+      <nits>489.2858</nits>
+    </point>
+    <point>
+      <value>0.7843</value>
+      <nits>518.7537</nits>
+    </point>
+    <point>
+      <value>0.8039</value>
+      <nits>547.7319</nits>
+    </point>
+    <point>
+      <value>0.8235</value>
+      <nits>577.6963</nits>
+    </point>
+    <point>
+      <value>0.8431</value>
+      <nits>609.674</nits>
+    </point>
+    <point>
+      <value>0.8627</value>
+      <nits>655.3798</nits>
+    </point>
+    <point>
+      <value>0.8824</value>
+      <nits>769.237</nits>
+    </point>
+    <point>
+      <value>0.902</value>
+      <nits>894.6417</nits>
+    </point>
+    <point>
+      <value>0.9216</value>
+      <nits>1028.4795</nits>
+    </point>
+    <point>
+      <value>0.9412</value>
+      <nits>1165.0377</nits>
+    </point>
+    <point>
+      <value>0.9608</value>
+      <nits>1304.6511</nits>
+    </point>
+    <point>
+      <value>0.9804</value>
+      <nits>1447.4595</nits>
+    </point>
+    <point>
+      <value>1.0</value>
+      <nits>1599.524</nits>
+    </point>
+  </screenBrightnessMap>
+
+ <RampAnimatorLevelMap>
+   <point>
+     <value>0.5812</value>
+     <nits>11.0</nits>
+   </point>
+   <point>
+     <value>0.644</value>
+     <nits>18.0</nits>
+   </point>
+   <point>
+     <value>0.669</value>
+     <nits>23.0</nits>
+   </point>
+   <point>
+     <value>0.722</value>
+     <nits>37.0</nits>
+   </point>
+   <point>
+     <value>0.7569</value>
+     <nits>55.0</nits>
+   </point>
+   <point>
+     <value>0.7707</value>
+     <nits>63.0</nits>
+   </point>
+   <point>
+     <value>0.81973</value>
+     <nits>105.0</nits>
+   </point>
+   <point>
+     <value>0.8716</value>
+     <nits>200.0</nits>
+   </point>
+   <point>
+     <value>0.9148</value>
+     <nits>320.0</nits>
+   </point>
+   <point>
+     <value>0.93168</value>
+     <nits>400.0</nits>
+   </point>
+   <point>
+     <value>0.95196</value>
+     <nits>500.0</nits>
+   </point>
+   <point>
+     <value>1.0</value>
+     <nits>1000.0</nits>
+   </point>
+ </RampAnimatorLevelMap>
+
+  <highBrightnessMode enabled="true">
+    <transitionPoint>0.8584</transitionPoint>
+    <minimumHdrPercentOfScreen>0.1</minimumHdrPercentOfScreen>
+
+    <minimumLux>14000</minimumLux>
+    <timing>
+      <timeWindowSecs>1800</timeWindowSecs>  // Window in which we restrict HBM.
+      <timeMaxSecs>300</timeMaxSecs>         // Maximum time of HBM allowed in that window.
+      <timeMinSecs>60</timeMinSecs>          // Minimum time remaining required to switch
+    </timing>                                //   HBM on for.
+
+    <sdrHdrRatioMap>
+      <point>
+        <sdrNits>2.000</sdrNits>
+        <hdrRatio>8.000</hdrRatio>
+      </point>
+      <point>
+        <sdrNits>650.000</sdrNits>
+        <hdrRatio>2.460</hdrRatio>
+      </point>
+      <point>
+        <sdrNits>1600.00</sdrNits>
+        <hdrRatio>1.000</hdrRatio>
+      </point>
+    </sdrHdrRatioMap>
+  </highBrightnessMode>
+  <screenBrightnessRampFastDecrease>0.00</screenBrightnessRampFastDecrease>
+  <screenBrightnessRampFastIncrease>0.7047244</screenBrightnessRampFastIncrease>
+  <ambientLightHorizonLong>10000</ambientLightHorizonLong>
+  <ambientLightHorizonShort>1000</ambientLightHorizonShort>
+</displayConfiguration>

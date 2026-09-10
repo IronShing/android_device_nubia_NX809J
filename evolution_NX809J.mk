@@ -30,6 +30,12 @@ $(call inherit-product, device/nubia/NX809J/device.mk)
 # into concluding a flashed build had no GApps when it had all three packages.
 NX809J_MINIMAL ?= true
 
+# PDF viewer: GrapheneOS PdfViewer (device/nubia/NX809J/pdfviewer) instead of Lineage Camelot,
+# which does not open PDFs on this device. The guard is honoured in vendor/lineage
+# config/common_mobile_full.mk.
+TARGET_EXCLUDES_CAMELOT := true
+PRODUCT_PACKAGES += PdfViewer
+
 # ── microG variant (third option, takes precedence over NX809J_MINIMAL) ───────
 # NX809J_MICROG=true → de-Googled base + microG (Services + Companion + GsfProxy) and NO GApps.
 # Kept as a separate flag rather than a third value of NX809J_MINIMAL so the existing two
@@ -97,12 +103,33 @@ PRODUCT_PACKAGES += \
     LatinIME
 endif
 
+# Power-off alarm (orphan-audit fix 2026-09-07). The vendor side already exists and works
+# (vendor.qti.hardware.alarm.IAlarm/default + /vendor/bin/power_off_alarm charger watcher); what
+# was missing is the system client that turns DeskClock's
+# org.codeaurora.poweroffalarm.action.SET_ALARM broadcast into an RTC wake-up. No LOS source repo
+# exists for it (LOS trees ship a proprietary PowerOffAlarm.apk), so device/nubia/NX809J/PowerOffAlarm
+# is our own from-source implementation of the same package/protocol. seapp_contexts already maps
+# com.qualcomm.qti.poweroffalarm -> vendor_qti_poweroffalarm_app (platform-signed). All variants.
+PRODUCT_PACKAGES += \
+    PowerOffAlarm
+
+# Pre-grant DeskClock the (dangerous) POWER_OFF_ALARM runtime permission -- see the xml.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/PowerOffAlarm/etc/default-permissions-poweroffalarm.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/default-permissions/default-permissions-poweroffalarm.xml
+
+ifeq ($(NX809J_MINIMAL)$(NX809J_MICROG),falsefalse)
+# FullGApps: Google Clock (from gms_full.mk) has no power-off-alarm sender, so ship AOSP DeskClock
+# alongside it -- it is the only alarm app that talks to PowerOffAlarm (user decision 2026-09-07).
+PRODUCT_PACKAGES += \
+    DeskClock
+endif
+
 # Android Auto: Google-signed AA 17.4 priv-app cluster (overrides the vendor/gms stub that
 # gms_full.mk lists) + allowlist. Policy (user decision 2026-09-04):
 #   FullGApps  -> ships it (the Google-tier variant; Play region-blocks the stub for some users)
 #   Minimal    -> no Android Auto
 #   microG     -> no Android Auto
-#   PERSONAL   -> Minimal + Android Auto (+ Fermata Auto below, YouTube on the head unit)
+#   PERSONAL   -> Minimal + Android Auto
 NX809J_SHIP_AA := false
 ifeq ($(NX809J_MINIMAL),false)
 NX809J_SHIP_AA := true
@@ -112,6 +139,19 @@ NX809J_SHIP_AA := true
 endif
 ifeq ($(NX809J_SHIP_AA),true)
 $(call inherit-product, device/nubia/NX809J/android_auto.mk)
+endif
+
+# Circle to Search (user requirement 2026-09-03: "in full gapps and my personal build").
+# Three pieces, all Google-app bound: Velvet (gms_full.mk / PERSONAL block in device.mk), the
+# framework strings naming it as the ContextualSearch package (PixelConfigOverlayCommon on Full,
+# overlay-personal on Personal), and the system feature android.software.contextualsearch,
+# which was the missing one: found 2026-09-09 on the Personal build with everything else in
+# place (Velvet 17.54 resolving LAUNCH_CONTEXTUAL_SEARCH, contextual_search_package set) but
+# `pm has-feature android.software.contextualsearch` = false, so Launcher3 never armed the
+# gesture. Same policy as Android Auto above: Full + Personal only.
+ifeq ($(NX809J_SHIP_AA),true)
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/permissions/android.software.contextualsearch.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/android.software.contextualsearch.xml
 endif
 
 # Device identifiers
