@@ -67,6 +67,12 @@ final class PrivacyGuard {
     private static final String KEY_MASK = "mask:";      // + pkg -> int
     private static final String KEY_UNTIL = "until:";    // + pkg -> long wall-clock ms
     private static final String KEY_MUTE = "mute:";      // + pkg -> boolean: no "blocked" alerts
+    private static final String KEY_AA = "aa:";          // + pkg -> boolean: lift mic/loc during Android Auto
+
+    /** Ops lifted for an AA-allowed package while Android Auto (car mode) is connected. */
+    static final int AA_EXEMPT = MIC | LOCATION;
+    /** Set by CarModeWatcher from UiModeManager ENTER/EXIT_CAR_MODE (Android Auto projection). */
+    private static volatile boolean sAaConnected;
 
     static final String ACTION_ALLOW = "com.nubia.rmcontrol.PRIVACY_ALLOW";
     static final String ACTION_REAPPLY = "com.nubia.rmcontrol.PRIVACY_REAPPLY";
@@ -118,7 +124,7 @@ final class PrivacyGuard {
     /** mask 0 removes the rule (and any temporary allowance). */
     static void setMask(Context ctx, String pkg, int mask) {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
-        if (mask == 0) ed.remove(KEY_MASK + pkg).remove(KEY_UNTIL + pkg).remove(KEY_MUTE + pkg);
+        if (mask == 0) ed.remove(KEY_MASK + pkg).remove(KEY_UNTIL + pkg).remove(KEY_MUTE + pkg).remove(KEY_AA + pkg);
         else ed.putInt(KEY_MASK + pkg, mask & ALL);
         ed.apply();
         apply(ctx);
@@ -164,6 +170,32 @@ final class PrivacyGuard {
         if (on) cancelNotification(ctx, pkg);   // take down one already showing
     }
 
+    // ---- Android Auto exemption -----------------------------------------------------------
+    // Android Auto asks the Google app for the microphone (and maps needs location); Privacy
+    // Guard would deny both. Per-app opt-in: while AA is connected, lift MIC|LOCATION for apps
+    // the user marked "allow during Android Auto", then re-guard on disconnect. The lift is
+    // folded into the published mask in apply(), so it survives every framework resync exactly
+    // like the base guard, and needs no extra framework patch.
+
+    static boolean aaAllowed(Context ctx, String pkg) {
+        return prefs(ctx).getBoolean(KEY_AA + pkg, false);
+    }
+
+    static void setAaAllowed(Context ctx, String pkg, boolean on) {
+        final SharedPreferences.Editor ed = prefs(ctx).edit();
+        if (on) ed.putBoolean(KEY_AA + pkg, true); else ed.remove(KEY_AA + pkg);
+        ed.apply();
+        apply(ctx);
+    }
+
+    /** Android Auto (car mode) connected state; republish so the exemption applies/lifts now. */
+    static void setAaConnected(Context ctx, boolean connected) {
+        if (sAaConnected == connected) return;
+        sAaConnected = connected;
+        Log.i(TAG, "Android Auto connected=" + connected);
+        apply(ctx);
+    }
+
     static long allowedUntil(Context ctx, String pkg) {
         final long t = prefs(ctx).getLong(KEY_UNTIL + pkg, 0);
         return t > System.currentTimeMillis() ? t : 0;
@@ -200,8 +232,14 @@ final class PrivacyGuard {
                     nextExpiry = Math.min(nextExpiry, until);
                     continue;                                  // temporarily allowed
                 }
+                int m = r.getValue();
+                // Android Auto: lift mic/location for opted-in apps while AA (car mode) is connected.
+                if (sAaConnected && p.getBoolean(KEY_AA + r.getKey(), false)) {
+                    m &= ~AA_EXEMPT;
+                    if (m == 0) continue;                      // nothing left to guard right now
+                }
                 if (sb.length() > 0) sb.append(',');
-                sb.append(r.getKey()).append(':').append(r.getValue());
+                sb.append(r.getKey()).append(':').append(m);
             }
         }
         final String want = sb.toString();

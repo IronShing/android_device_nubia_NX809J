@@ -1,0 +1,15 @@
+// "Navigation hint" switch for Launcher3.
+//
+// Settings > Gestures > Navigation hint only ever toggled
+// com.google.android.apps.nexuslauncher.overlay.nogesturehint (vendor/pixel-style), which
+// targets the Pixel Launcher. This ROM ships com.android.launcher3, so the switch wrote
+// navigation_bar_hint and nothing read it: the pill (Launcher3's stashed taskbar handle)
+// stayed. Same resources as the Pixel overlay, targeting Launcher3; the Settings fragment
+// toggles whichever of the two launchers is installed.
+runtime_resource_overlay {
+    name: "Launcher3NoGestureHintOverlay",
+    resource_dirs: ["res"],
+    certificate: "platform",
+    sdk_version: "current",
+    product_specific: true,
+}

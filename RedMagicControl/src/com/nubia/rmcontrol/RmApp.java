@@ -42,6 +42,11 @@ public class RmApp extends Application {
         // Nothing happens unless the user picks a mode (persist.sys.rm.slider.mode).
         SliderWatcher.start(this);
 
+        // Shoulder-trigger -> touch mapper: publish the display orientation so the
+        // trigger_map daemon picks the portrait vs landscape target set. No-op cost
+        // (just mirrors rotation into sys.rm.trig_rot) until the user maps triggers.
+        TriggerRotationWatcher.start(this);
+
         // Fast charging is the other time this device gets hot while nobody is holding it.
         // No-op unless the user enables it (persist.sys.rm.chargecool).
         ChargeCooling.start(this);
@@ -81,6 +86,8 @@ public class RmApp extends Application {
         // applies them at boot on its own; this re-arms the "allow for 10 min" expiry alarm)
         // and watch for blocked attempts to offer the temporary allowance.
         PrivacyGuard.start(this);
+        // Android Auto: lift mic/location for opted-in apps while AA (car mode) is connected.
+        CarModeWatcher.start(this);
         OtpSms.start(this);
 
         // Do Not Disturb => every RGB zone dark, fan-ring glow included (persist.sys.rm.lights_quiet).

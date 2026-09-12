@@ -12,6 +12,7 @@
     <string name="tile_cooling">Liquid Cooling</string>
     <string name="tile_touchpad">Touchpad</string>
     <string name="touchpad_title">Phone as touchpad</string>
+    <string name="trigger_map_title">Shoulder trigger mapping</string>
     <string name="tile_monitor_only">Monitor only</string>
     <string name="tile_privacy">Privacy guard</string>
     <string name="off">Off</string>

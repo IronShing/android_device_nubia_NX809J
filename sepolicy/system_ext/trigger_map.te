@@ -1,0 +1,26 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# System-side (coredomain) domain for the shoulder-trigger touch mapper
+# (/system_ext/bin/trigger_map). It reads the two Awinic SAR trigger evdev nodes
+# (KEY_F7/KEY_F8) and the real touchscreen's ABS range, then injects multi-touch
+# touches through /dev/uinput. Pure platform work: /dev/input + /dev/uinput only,
+# no vendor node access (unlike the touch driver's syna_proc). Mirrors
+# dt2w_uewake, which establishes the coredomain uinput precedent on this device.
+
+type trigger_map, domain, coredomain;
+type trigger_map_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(trigger_map)
+
+# Read the SAR trigger nodes + probe the real touchscreen coordinate range.
+# Standard evdev nodes are input_device; EVIOCGNAME/EVIOCGABS need ioctl.
+allow trigger_map input_device:chr_file { open read ioctl };
+
+# Create + drive the uinput virtual touchscreen.
+allow trigger_map uhid_device:chr_file { open read write ioctl };
+
+# Read the RedMagic Control config props (enable + X/Y targets). rm_ctrl_prop is
+# the system_ext-owned type for persist.sys.rm.* (see property_contexts); the app
+# writes them, this daemon only reads.
+get_prop(trigger_map, rm_ctrl_prop)

@@ -291,6 +291,14 @@ PRODUCT_PACKAGES += \
     dt2w_uewake \
     dt2w_uewake_arm.rc
 
+# Shoulder-trigger -> screen-touch mapper (XDA #121). Native daemon reads the two
+# Awinic SAR trigger nodes (KEY_F7=right / KEY_F8=left) and injects multi-touch at
+# a RedMagic-Control-set coordinate through uinput. system_ext coredomain, same
+# pattern as dt2w_uewake; its port is added to dt2w/input-port-associations.xml
+# (baked to /vendor/etc by sign_a17_release.sh).
+PRODUCT_PACKAGES += \
+    trigger_map
+
 # RKP toggle: init-domain property bridge. The RedMagic Control switch writes
 # persist.sys.rm.rkp and these actions do the remote_provisioning.* setprops, which the app
 # itself is neverallowed to do (property.te). See rkp/rkp.rc.
@@ -554,6 +562,12 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     NX809JWifiOverlay
 
+# "Navigation hint" for Launcher3: the Settings switch only knew the Pixel Launcher overlay,
+# so on this ROM (Launcher3) the gesture pill could never be hidden. See
+# rro_overlays/Launcher3NoGestureHintOverlay/Android.bp and the Settings fragment patch.
+PRODUCT_PACKAGES += \
+    Launcher3NoGestureHintOverlay
+
 # 16 KB page size check bypass for prebuilt libraries
 #
 # Android 16 (Baklava) introduced PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE which
@@ -719,6 +733,17 @@ PRODUCT_PACKAGES += \
     Velvet
 PRODUCT_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay-personal
 endif
+
+# 2026-09-10: ReFra (com.dot.gallery) as the personal gallery, offline+WithML arm64 build.
+# PERSONAL ONLY and deliberately so: the APK is 352 MB (~334 MB of it ONNX models for face
+# recognition, CLIP search and SAM cutout), which is not something to preinstall unremovably on
+# other people's phones. It does NOT replace anything -- Glimpse stays as the gallery that owns
+# config_systemGallery, and Gallery2 stays because it is the EDIT / CROP / TRIM backend and has no
+# launcher activity of its own. NubiaCamera's thumbnail is an implicit ACTION_VIEW since swap5, so
+# it resolves to whichever gallery is set as default. See refra/README.md for provenance, the
+# checksum, and why this prebuilt needs no skip_preprocessed_apk_checks.
+PRODUCT_PACKAGES += \
+    ReFra
 endif
 
 # Gesture (swipe) typing for the LineageOS LatinIME keyboard. AOSP's native gesture decoder is

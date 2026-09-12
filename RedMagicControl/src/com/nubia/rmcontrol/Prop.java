@@ -22,6 +22,11 @@ final class Prop {
         catch (Throwable t) { return def; }
     }
 
+    static int getInt(String key, int def) {
+        try { return SystemProperties.getInt(key, def); }
+        catch (Throwable t) { return def; }
+    }
+
     static void set(String key, String val) {
         try { SystemProperties.set(key, val); }
         catch (Throwable t) { Log.e("RMControl", "Prop.set " + key + "=" + val + " failed", t); }

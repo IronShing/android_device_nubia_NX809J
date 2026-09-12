@@ -1,0 +1,29 @@
+// ReFra — the gallery app for the developer's PERSONAL build only (NX809J_PERSONAL=true).
+// Never in a published Minimal / FullGApps / microG kit: see device.mk for the gate.
+//
+// Upstream: https://github.com/IacobIonut01/ReFra (Apache-2.0), release 5.1.3, the
+// arm64-v8a "offline + WithML" variant — offline = no Immich/Nextcloud/ownCloud/WebDAV/SMB
+// clients, WithML = the on-device ONNX models (face recognition, CLIP search, SAM cutout).
+// Provenance and checksum: see README.md in this directory. Unmodified author's release APK.
+//
+// This is a 352 MB APK, ~334 MB of which is ONNX model assets. That cost is accepted here
+// because it is one personal device; do not copy this module into a shipping variant without
+// re-reading the size note in README.md.
+android_app_import {
+    name: "ReFra",
+    apk: "ReFra.apk",
+    presigned: true,    // author's v2 signature, preserved verbatim
+    preprocessed: true, // targetSdk 37 >= 30, v2-signed and aligned: install as-is
+
+    // NOTE (deliberate, do not "fix" by adding skip_preprocessed_apk_checks): unlike the
+    // MagicDesk/Shizuku prebuilts, this APK declares extractNativeLibs=false and stores its
+    // lib/arm64-v8a/*.so UNCOMPRESSED, so they are mmap'd in place out of the APK. That is the
+    // layout a read-only preinstall requires, so check_prebuilt_presigned_apk.py passes on its
+    // own and there is no need to ship the .so separately under <appdir>/lib/arm64/.
+    // Verified 2026-09-10: `zipinfo` reports "none (stored)" for every .so.
+
+    product_specific: true, // -> /product/app/ReFra
+    dex_preopt: {
+        enabled: false, // 12.7 MB classes.dex; JIT it rather than growing /product further
+    },
+}

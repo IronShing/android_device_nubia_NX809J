@@ -1,0 +1,23 @@
+# trigger_map — shoulder-trigger -> screen-touch mapper (service block).
+#
+# On /system_ext so init's coredomain type_transition (init -> trigger_map on
+# trigger_map_exec) fires, exactly like dt2w_uewake. The daemon is a clean
+# coredomain doing only evdev reads (/dev/input/*) + /dev/uinput.
+#
+# Gated on persist.sys.rm.trig_map (RedMagic Control "map triggers to touch").
+# When off the daemon is stopped and the triggers keep emitting F7/F8 as before.
+service trigger_map /system_ext/bin/trigger_map
+    class late_start
+    user system
+    # input: read the SAR trigger evdev nodes. uhid: open /dev/uinput.
+    group system input uhid
+    disabled
+
+on property:persist.sys.rm.trig_map=1
+    start trigger_map
+
+on property:persist.sys.rm.trig_map=0
+    stop trigger_map
+
+on property:sys.boot_completed=1 && property:persist.sys.rm.trig_map=1
+    start trigger_map

@@ -16,4 +16,8 @@
      image by sign_a17_release.sh rather than installed by device.mk. -->
 <ports>
     <port display="147" input="dt2w_uewake"/>
+    <!-- trigger_map: pin the shoulder-trigger virtual touchscreen to the built-in panel,
+         same rationale as DT2W (avoid AssociatedDisplayPort:<none> dropping events with a
+         monitor attached). Must match TRIG_INPUT_PORT / UI_SET_PHYS in trigger_map.c. -->
+    <port display="147" input="trigger_map"/>
 </ports>

@@ -1,0 +1,15 @@
+// NX809J shoulder-trigger -> screen-touch mapper.
+//
+// Native daemon (system_ext coredomain, like dt2w_uewake) that reads the two
+// Awinic SAR trigger evdev nodes (KEY_F7 = right, KEY_F8 = left) and, while
+// mapping is enabled, injects a real multi-touch touch at a user-set coordinate
+// through a uinput virtual touchscreen. Gives 0-latency, InputFlinger-clean
+// trigger->tap for games, replacing the stock Game Space handler we don't ship.
+cc_binary {
+    name: "trigger_map",
+    srcs: ["trigger_map.c"],
+    shared_libs: ["liblog"],
+    cflags: ["-Wall", "-Werror"],
+    init_rc: ["trigger_map.rc"],
+    system_ext_specific: true,
+}

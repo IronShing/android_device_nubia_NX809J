@@ -80,7 +80,6 @@ PRODUCT_PACKAGES += \
     Contacts \
     messaging \
     Etar \
-    Jelly \
     DeskClock \
     Gallery2 \
     LatinIME \
@@ -97,7 +96,6 @@ PRODUCT_PACKAGES += \
     Contacts \
     messaging \
     Etar \
-    Jelly \
     DeskClock \
     Gallery2 \
     LatinIME
@@ -176,7 +174,7 @@ BUILD_FINGERPRINT := nubia/NX809J/NX809J:16/BP2A.250605.031.A3/V11.0.16:user/rel
 #  - bcr: drop Basic Call Recorder (the LineageOS Dialer records calls itself)
 # (Google Contacts kept intentionally.)
 # Aperture/Files/Calculator are de-bloated in BOTH variants (we ship NubiaCamera).
-PRODUCT_PACKAGES := $(filter-out Aperture ApertureLensLauncher CalculatorGooglePrebuilt_85006267 FilesPrebuilt, $(PRODUCT_PACKAGES))
+PRODUCT_PACKAGES := $(filter-out Aperture ApertureLensLauncher CalculatorGooglePrebuilt_85006267 FilesPrebuilt Jelly, $(PRODUCT_PACKAGES))
 PRODUCT_PACKAGES += \
     ExactCalculator
 

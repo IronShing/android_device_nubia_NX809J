@@ -141,6 +141,21 @@ public class SettingsActivity extends Activity {
         rmSwitch(controls, "Left trigger (L)", "persist.sys.rm.trigger_left", true);
         rmSwitch(controls, "Right trigger (R)", "persist.sys.rm.trigger_right", true);
 
+        // Map the shoulder triggers to on-screen taps (trigger_map daemon). When off,
+        // the triggers only emit F7/F8 as before; when on, each fires a real touch at
+        // the position set below. The per-side switches above still gate each trigger.
+        rmSwitch(controls, "Map triggers to touch (games)", "persist.sys.rm.trig_map", false);
+        LinearLayout trigRow = labelledRow(controls, "Position the L / R touch targets");
+        Button trigPos = new Button(this);
+        trigPos.setText("Position");
+        trigPos.setOnClickListener(v ->
+                startActivity(new android.content.Intent(this, TriggerMapperActivity.class)));
+        trigRow.addView(trigPos);
+        note(controls, "With mapping on, pressing a shoulder trigger taps the screen where you "
+                + "placed its L/R marker \u2014 e.g. the fire button in a shooter. The tap is injected "
+                + "by the system on its own touch pointer, so it works alongside your thumbs with no "
+                + "lag. Left = F8, right = F7.");
+
         // ---- Magic slider (Settings.System, stock key) ----
         header(controls, "Magic slider");
         sliderRow(controls);
@@ -2321,6 +2336,16 @@ public class SettingsActivity extends Activity {
         mute.setOnCheckedChangeListener((v, on) ->
                 PrivacyGuard.setMuted(getApplicationContext(), pkg, on));
         block.addView(mute);
+
+        // Android Auto: only meaningful when mic or location is guarded for this app.
+        if ((PrivacyGuard.maskOf(this, pkg) & PrivacyGuard.AA_EXEMPT) != 0) {
+            final android.widget.CheckBox aa = new android.widget.CheckBox(this);
+            aa.setText("Allow mic & location while Android Auto is connected");
+            aa.setChecked(PrivacyGuard.aaAllowed(this, pkg));
+            aa.setOnCheckedChangeListener((v, on) ->
+                    PrivacyGuard.setAaAllowed(getApplicationContext(), pkg, on));
+            block.addView(aa);
+        }
 
         final long until = PrivacyGuard.allowedUntil(this, pkg);
         if (until != 0) {
