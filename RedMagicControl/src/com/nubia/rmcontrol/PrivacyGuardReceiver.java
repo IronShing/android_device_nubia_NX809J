@@ -11,7 +11,18 @@ public class PrivacyGuardReceiver extends BroadcastReceiver {
         final String action = intent.getAction();
         if (PrivacyGuard.ACTION_ALLOW.equals(action)) {
             final String pkg = intent.getStringExtra(PrivacyGuard.EXTRA_PKG);
-            if (pkg != null) PrivacyGuard.allowFor(ctx, pkg, PrivacyGuard.ALLOW_MS);
+            final int bit = intent.getIntExtra(PrivacyGuard.EXTRA_BIT, 0);
+            final long ms = intent.getLongExtra(PrivacyGuard.EXTRA_MS, PrivacyGuard.ALLOW_MS);
+            if (pkg != null && bit != 0) PrivacyGuard.allowFor(ctx, pkg, bit, ms);
+        } else if (PrivacyGuard.ACTION_EXTEND.equals(action)) {
+            final String pkg = intent.getStringExtra(PrivacyGuard.EXTRA_PKG);
+            final int bit = intent.getIntExtra(PrivacyGuard.EXTRA_BIT, 0);
+            final long ms = intent.getLongExtra(PrivacyGuard.EXTRA_MS, PrivacyGuard.ALLOW_MS);
+            if (pkg != null && bit != 0) PrivacyGuard.allowExtend(ctx, pkg, bit, ms);
+        } else if (PrivacyGuard.ACTION_ALLOW_EXPIRED.equals(action)) {
+            final String pkg = intent.getStringExtra(PrivacyGuard.EXTRA_PKG);
+            final int bit = intent.getIntExtra(PrivacyGuard.EXTRA_BIT, 0);
+            if (pkg != null && bit != 0) PrivacyGuard.onAllowExpired(ctx, pkg, bit);
         } else if (PrivacyGuard.ACTION_REAPPLY.equals(action)) {
             PrivacyGuard.apply(ctx);
         }

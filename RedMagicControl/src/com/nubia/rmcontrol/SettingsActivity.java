@@ -1,6 +1,7 @@
 package com.nubia.rmcontrol;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -228,6 +229,8 @@ public class SettingsActivity extends Activity {
         header(privacy, "SMS verification codes");
         otpSmsSection(privacy);
 
+        centerNotifSection(privacy);
+
         // ---- Attestation ----
         header(system, "Attestation");
         rkpRow(system);
@@ -252,10 +255,38 @@ public class SettingsActivity extends Activity {
                 + "apply while offline and only while the switch above is on.");
         batteryStatsRow(system);
 
+        header(system, "Logs");
+        logCaptureSection(system);
+
+        header(system, "Reset");
+        settingsResetSection(system);
+
         setContentView(buildTabbedRoot(
                 new String[]{"Cooling", "Lighting", "Controls", "Audio", "Display", "Privacy", "System"},
                 new LinearLayout[]{cooling, lighting, controls, audio, display, privacy, system}));
         setTitle(R.string.app_name);
+
+        maybeOpenPrivacyEditor(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent it) {
+        super.onNewIntent(it);
+        setIntent(it);
+        maybeOpenPrivacyEditor(it);
+    }
+
+    /**
+     * Privacy Guard "blocked" notification deep-link: jump straight to the offending app's
+     * per-permission editor. (Android reserves notification long-press for the system, so the
+     * notification tap is what lands here.)
+     */
+    private void maybeOpenPrivacyEditor(Intent it) {
+        if (it == null || !it.getBooleanExtra(PrivacyGuard.EXTRA_OPEN_EDITOR, false)) return;
+        final String pkg = it.getStringExtra(PrivacyGuard.EXTRA_PKG);
+        if (pkg == null) return;
+        it.removeExtra(PrivacyGuard.EXTRA_OPEN_EDITOR);   // one-shot: don't reopen on rotate/resume
+        getWindow().getDecorView().post(() -> showPrivacyAppEditor(pkg, () -> {}));
     }
 
     private int sysBarPx(String name) {
@@ -1753,6 +1784,70 @@ public class SettingsActivity extends Activity {
     // Settings refreshes its battery chart hourly with setExactAndAllowWhileIdle(RTC_WAKEUP) — an
     // alarm class Doze is NOT allowed to defer, which makes it the largest idle waker on a stock
     // build and immune to every Doze setting above it in this screen.
+    // ---- Reset settings to defaults, keep files/accounts/apps (XDA #157, NX123Dos) -----------
+    private void logCaptureSection(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "\"Capture log\" in the power menu");
+        final Switch sw = new Switch(this);
+        sw.setChecked(LogCapture.enabled(this));
+        sw.setOnCheckedChangeListener((v, on) ->
+                Settings.Secure.putInt(getContentResolver(), LogCapture.SETTING_ENABLED, on ? 1 : 0));
+        row.addView(sw);
+
+        LinearLayout nowRow = labelledRow(root, "Capture a log now");
+        Button now = new Button(this);
+        now.setText("Capture");
+        now.setOnClickListener(v -> LogCapture.captureAsync(this, null));
+        nowRow.addView(now);
+
+        note(root, "Long-press power \u2192 Capture log saves the full system log (every buffer, "
+                + "roughly the last 15\u201330 minutes) plus device properties to "
+                + "Download/RMControl-logs and posts a notification with a Share button, so a "
+                + "bug can be reported right after it happens without adb or root. The ten most "
+                + "recent captures are kept. The switch only hides the power-menu item; Capture "
+                + "here always works. Logs can contain app names, notification text and "
+                + "similar \u2014 look through one before posting it publicly.");
+    }
+
+    private void settingsResetSection(LinearLayout root) {
+        final boolean owner = android.os.UserHandle.myUserId() == 0;
+        note(root, "Returns all system settings and UI customisations to their defaults WITHOUT a "
+                + "data wipe — apps, app data, accounts, secure elements and files are all kept. "
+                + "Handy to clear a bad configuration during development instead of wiping /data.\n\n"
+                + (owner
+                    ? "As the owner this resets this user's settings AND the shared system-wide "
+                      + "(Global) settings."
+                    : "As a secondary user this resets only THIS user's settings; the shared "
+                      + "system-wide settings are left alone (owner only)."));
+        final Button reset = new Button(this);
+        reset.setText("Reset all settings…");
+        reset.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Reset all settings?")
+                .setMessage("All system settings and UI customisations return to defaults. Your "
+                        + "apps, app data, accounts and files are NOT touched. A few changes apply "
+                        + "only after a reboot.")
+                .setPositiveButton("Reset", (d, w) -> doSettingsReset(owner))
+                .setNegativeButton("Cancel", null)
+                .show());
+        root.addView(reset);
+    }
+
+    private void doSettingsReset(boolean owner) {
+        final android.content.ContentResolver cr = getContentResolver();
+        final int uid = android.os.UserHandle.myUserId();
+        int ok = 0;
+        // tag=null + TRUSTED_DEFAULTS = every setting back to platform default (needs system uid).
+        try { Settings.Secure.resetToDefaultsAsUser(cr, null, Settings.RESET_MODE_TRUSTED_DEFAULTS, uid); ok++; }
+        catch (Throwable t) { android.util.Log.e("RmControl", "reset Secure", t); }
+        try { Settings.System.resetToDefaultsAsUser(cr, null, Settings.RESET_MODE_TRUSTED_DEFAULTS, uid); ok++; }
+        catch (Throwable t) { android.util.Log.e("RmControl", "reset System", t); }
+        if (owner) {   // Global is device-wide, not per-user — owner scope only
+            try { Settings.Global.resetToDefaultsAsUser(cr, null, Settings.RESET_MODE_TRUSTED_DEFAULTS, uid); ok++; }
+            catch (Throwable t) { android.util.Log.e("RmControl", "reset Global", t); }
+        }
+        Toast.makeText(this, ok > 0 ? "Settings reset to defaults — reboot to finish"
+                : "Reset failed — see log", Toast.LENGTH_LONG).show();
+    }
+
     private void batteryStatsRow(LinearLayout root) {
         final String key = "persist.sys.rm.batteryjob_hours";
         // Default 6h, not stock hourly: this alarm is the single largest idle waker and Doze is
@@ -1866,9 +1961,10 @@ public class SettingsActivity extends Activity {
         master.setChecked(masterOn);
         row.addView(master);
 
-        final LinearLayout autoRow = labelledRow(root, "Auto-copy the code to the clipboard");
+        final LinearLayout autoRow = labelledRow(root,
+                "Auto-copy the code to the clipboard (keyboard suggests it as the paste value)");
         final Switch auto = new Switch(this);
-        auto.setChecked(secureOn(OTP_AUTOCOPY));
+        auto.setChecked(Settings.Secure.getInt(getContentResolver(), OTP_AUTOCOPY, 1) != 0);
         auto.setOnCheckedChangeListener((v, on) ->
                 Settings.Secure.putInt(getContentResolver(), OTP_AUTOCOPY, on ? 1 : 0));
         autoRow.addView(auto);
@@ -2183,6 +2279,76 @@ public class SettingsActivity extends Activity {
     }
 
     // ---- Guarded-apps manager: a searchable floating list; tap an app to edit its blocks ----
+    // ---- Center notifications (CenterNotifListener) ---------------------------------------
+    private Button mCenterBtn;
+    private void centerNotifSection(LinearLayout root) {
+        header(root, "Center notifications");
+        note(root, "For the apps you pick here, an incoming notification is ALSO shown as a large "
+                + "card in the middle of the screen — tap it to open the app, swipe it away to "
+                + "dismiss. Handy so you don't miss a message while a game, video or Gemini is "
+                + "fullscreen. Every other app keeps the normal banner at the top; only the apps you "
+                + "add here are affected.");
+        mCenterBtn = new Button(this);
+        mCenterBtn.setOnClickListener(v -> showCenterNotifManager());
+        root.addView(mCenterBtn);
+        refreshCenterBtn();
+    }
+    private void refreshCenterBtn() {
+        if (mCenterBtn == null) return;
+        final int n = CenterNotifListener.apps(this).size();
+        mCenterBtn.setText(n == 0 ? "Choose apps…" : "Choose apps (" + n + ")");
+    }
+    private void showCenterNotifManager() {
+        final int pad = dp(16);
+        final ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1, new java.util.ArrayList<String>()) {
+            @Override public android.view.View getView(int position, android.view.View cv,
+                    android.view.ViewGroup parent) {
+                final android.view.View v = super.getView(position, cv, parent);
+                final String pkg = getItem(position);
+                ((TextView) v.findViewById(android.R.id.text1)).setText(
+                        PrivacyGuard.label(SettingsActivity.this, pkg)
+                        + (PrivacyGuard.installed(SettingsActivity.this, pkg) ? "" : "  (not installed)"));
+                return v;
+            }
+        };
+        final android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setAdapter(adapter);
+        final Runnable reload = () -> {
+            adapter.clear();
+            adapter.addAll(new java.util.ArrayList<>(CenterNotifListener.apps(this)));
+            adapter.notifyDataSetChanged();
+            refreshCenterBtn();
+        };
+        reload.run();
+        lv.setOnItemClickListener((p, v, pos, id) -> {
+            final String pkg = adapter.getItem(pos);
+            if (pkg == null) return;
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle(PrivacyGuard.label(this, pkg))
+                    .setMessage("Remove from center notifications?")
+                    .setPositiveButton("Remove", (d, w) -> {
+                        CenterNotifListener.setApp(getApplicationContext(), pkg, false); reload.run();
+                    })
+                    .setNegativeButton("Cancel", null).show();
+        });
+        final LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, dp(8), pad, 0);
+        box.addView(lv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(420)));
+        final android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle("Center notifications")
+                .setView(box)
+                .setPositiveButton("Add app…", null)
+                .setNegativeButton("Close", null)
+                .show();
+        dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+                showAppPicker(getPackageManager(), CenterNotifListener.apps(this), pkg -> {
+                    CenterNotifListener.setApp(getApplicationContext(), pkg, true);
+                    reload.run();
+                }));
+    }
+
     private void showGuardedAppsManager(final Switch master) {
         final int pad = dp(16);
         final LinearLayout box = new LinearLayout(this);
@@ -2260,7 +2426,7 @@ public class SettingsActivity extends Activity {
                 .show();
         dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
                 showAppPicker(getPackageManager(), PrivacyGuard.rules(this).keySet(), pkg -> {
-                    PrivacyGuard.setMask(getApplicationContext(), pkg, PrivacyGuard.ALL);
+                    PrivacyGuard.setMask(getApplicationContext(), pkg, PrivacyGuard.requestedMask(getApplicationContext(), pkg));
                     if (master != null && !PrivacyGuard.enabled()) master.setChecked(true);
                     reload.run();
                     showPrivacyAppEditor(pkg, reload);
@@ -2281,18 +2447,14 @@ public class SettingsActivity extends Activity {
     private String blockedSummary(String pkg) {
         final int mask = PrivacyGuard.maskOf(this, pkg);
         if (mask == 0) return "Nothing blocked";
-        final long until = PrivacyGuard.allowedUntil(this, pkg);
-        final String suffix = until == 0 ? "" : "  \u2014 allowed until "
-                + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(until));
+        final String suffix = PrivacyGuard.anyAllowed(this, pkg) ? "  \u2014 some temporarily allowed" : "";
         if (mask == PrivacyGuard.ALL) return "Everything blocked" + suffix;
-        final int[] bits = { PrivacyGuard.CAMERA, PrivacyGuard.MIC, PrivacyGuard.LOCATION,
-                PrivacyGuard.CONTACTS, PrivacyGuard.MEDIA_VISUAL, PrivacyGuard.MEDIA_AUDIO,
-                PrivacyGuard.FILES, PrivacyGuard.NEARBY };
-        final String[] names = { "Camera", "Mic", "Location", "Contacts", "Photos", "Audio",
-                "Files", "Nearby" };
         final StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < bits.length; i++) {
-            if ((mask & bits[i]) != 0) { if (sb.length() > 0) sb.append(", "); sb.append(names[i]); }
+        for (int i = 0; i < PrivacyGuard.BITS.length; i++) {
+            if ((mask & PrivacyGuard.BITS[i]) != 0) {
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(PrivacyGuard.BIT_NAMES[i]);
+            }
         }
         return sb.toString() + suffix;
     }
@@ -2312,22 +2474,55 @@ public class SettingsActivity extends Activity {
         sub.setText(pkg + (PrivacyGuard.installed(this, pkg) ? "" : "  (not installed)"));
         block.addView(sub);
 
-        final int[] bits = { PrivacyGuard.CAMERA, PrivacyGuard.MIC, PrivacyGuard.LOCATION,
-                PrivacyGuard.CONTACTS, PrivacyGuard.MEDIA_VISUAL, PrivacyGuard.MEDIA_AUDIO,
-                PrivacyGuard.FILES, PrivacyGuard.NEARBY };
-        final String[] names = { "Camera", "Mic", "Location", "Contacts", "Photos & videos",
-                "Audio & music", "Files", "Nearby devices" };
-        for (int i = 0; i < bits.length; i++) {
-            final int bit = bits[i];
+        final boolean installed = PrivacyGuard.installed(this, pkg);
+        int shown = 0;
+        for (int i = 0; i < PrivacyGuard.BITS.length; i++) {
+            final int bit = PrivacyGuard.BITS[i];
+            final String bname = PrivacyGuard.BIT_NAMES[i];
+            // Only show toggles the app actually asks for (installed apps); show all for a rule
+            // whose app is not installed, and always show anything already blocked.
+            if (installed && (PrivacyGuard.maskOf(this, pkg) & bit) == 0
+                    && !PrivacyGuard.appRequestsBit(this, pkg, bit)) {
+                continue;
+            }
+            shown++;
             final android.widget.CheckBox cb = new android.widget.CheckBox(this);
-            cb.setText(names[i]);
+            cb.setText(bname);
             cb.setChecked((PrivacyGuard.maskOf(this, pkg) & bit) != 0);
             cb.setOnCheckedChangeListener((v, on) -> {
                 final int cur = PrivacyGuard.maskOf(this, pkg);
                 PrivacyGuard.setMask(getApplicationContext(), pkg, on ? (cur | bit) : (cur & ~bit));
                 if (onChange != null) onChange.run();
             });
+            // Long-press a blocked item to temporarily allow just it for 5 / 10 / 15 minutes.
+            cb.setOnLongClickListener(v -> {
+                if ((PrivacyGuard.maskOf(this, pkg) & bit) == 0) return false;   // not blocked
+                final long[] ch = PrivacyGuard.ALLOW_CHOICES_MS;
+                final String[] labels = new String[ch.length];
+                for (int k = 0; k < ch.length; k++) labels[k] = (ch[k] / 60000) + " minutes";
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Allow " + bname + " for")
+                        .setItems(labels, (d, which) -> {
+                            PrivacyGuard.allowFor(getApplicationContext(), pkg, bit, ch[which]);
+                            if (onChange != null) onChange.run();
+                        })
+                        .show();
+                return true;
+            });
             block.addView(cb);
+        }
+        if (installed && shown == 0) {
+            final TextView none = new TextView(this);
+            none.setTextSize(12);
+            none.setTextColor(0xFF888888);
+            none.setText("This app requests none of the guardable permissions.");
+            block.addView(none);
+        } else {
+            final TextView hint = new TextView(this);
+            hint.setTextSize(11);
+            hint.setTextColor(0xFF888888);
+            hint.setText("Long-press a blocked item to allow just it for 5 / 10 / 15 min.");
+            block.addView(hint);
         }
 
         final android.widget.CheckBox mute = new android.widget.CheckBox(this);
@@ -2347,19 +2542,42 @@ public class SettingsActivity extends Activity {
             block.addView(aa);
         }
 
-        final long until = PrivacyGuard.allowedUntil(this, pkg);
-        if (until != 0) {
+        // Per-permission temporary allowances currently in effect.
+        for (int i = 0; i < PrivacyGuard.BITS.length; i++) {
+            final int bit = PrivacyGuard.BITS[i];
+            final long until = PrivacyGuard.allowedUntil(this, pkg, bit);
+            if (until == 0) continue;
             final TextView tmp = new TextView(this);
             tmp.setTextSize(12);
             tmp.setTextColor(accentColor());
-            tmp.setText("Allowed until " + android.text.format.DateFormat.getTimeFormat(this)
-                    .format(new java.util.Date(until)) + " \u2014 tap to guard again now");
+            tmp.setText(PrivacyGuard.BIT_NAMES[i] + " allowed until "
+                    + android.text.format.DateFormat.getTimeFormat(this)
+                            .format(new java.util.Date(until)) + " \u2014 tap to guard now");
             tmp.setOnClickListener(v -> {
-                PrivacyGuard.revokeAllow(getApplicationContext(), pkg);
+                PrivacyGuard.revokeAllow(getApplicationContext(), pkg, bit);
                 tmp.setVisibility(android.view.View.GONE);
                 if (onChange != null) onChange.run();
             });
             block.addView(tmp);
+        }
+
+        // Screen rules learnt from the foreground prompt ("always allow on this screen").
+        for (Object[] r : PrivacyGuard.autoRules(this, pkg)) {
+            final String cls = (String) r[0];
+            final int bit = (Integer) r[1];
+            final long ms = (Long) r[2];
+            final TextView rule = new TextView(this);
+            rule.setTextSize(12);
+            rule.setTextColor(accentColor());
+            rule.setText("Always allow " + PrivacyGuard.permWord(bit) + " on the "
+                    + PrivacyGuard.screenLabel(this, pkg, cls) + " screen for " + (ms / 60000)
+                    + " min \u2014 tap to forget");
+            rule.setOnClickListener(v -> {
+                PrivacyGuard.setAutoAllow(getApplicationContext(), pkg, cls, bit, 0);
+                rule.setVisibility(android.view.View.GONE);
+                if (onChange != null) onChange.run();
+            });
+            block.addView(rule);
         }
 
         new android.app.AlertDialog.Builder(this)

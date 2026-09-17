@@ -89,6 +89,11 @@ public class RmApp extends Application {
         // Android Auto: lift mic/location for opted-in apps while AA (car mode) is connected.
         CarModeWatcher.start(this);
         OtpSms.start(this);
+        // Power-menu "Capture log" (SystemUI CaptureLogAction -> logcat snapshot + share).
+        LogCapture.start(this);
+        // Center notifications: re-assert our listener grant in case it was lost (e.g. a
+        // settings reset); no-op when no app is chosen.
+        CenterNotifListener.ensureEnabled(this);
 
         // Do Not Disturb => every RGB zone dark, fan-ring glow included (persist.sys.rm.lights_quiet).
         QuietLights.start(this);

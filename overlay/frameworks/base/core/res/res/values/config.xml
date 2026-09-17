@@ -139,8 +139,10 @@
          multi-user user. Adding it is safe for single-user devices: the entry is gated at runtime on
          mLogoutInteractor.isLogoutEnabled(), which is false unless multi-user logout is actually
          available (DevicePolicyManager.setLogoutEnabled / secondary user present), so nothing new
-         shows up for everyone else. This list is otherwise the AOSP default - EvolutionX does not
-         customise it, so no entries are lost by overriding here. -->
+         shows up for everyone else. "capturelog" (2026-09-16) is our own SystemUI action: it asks
+         RedMagicControl for a logcat snapshot behind a "tap to share" notification, so a user can
+         grab the log of a bug they just saw without adb. This list is otherwise the AOSP default -
+         EvolutionX does not customise it, so no entries are lost by overriding here. -->
     <string-array translatable="false" name="config_globalActionsList">
         <item>emergency</item>
         <item>lockdown</item>
@@ -149,6 +151,7 @@
         <item>screenshot</item>
         <item>bugreport</item>
         <item>logout</item>
+        <item>capturelog</item>
     </string-array>
 
     <!-- Android Auto (2026-09-02). Minimal and microG do not get the Pixel RRO

@@ -48,7 +48,9 @@ final class OtpSms {
         return Settings.Secure.getInt(c.getContentResolver(), SETTING_ENABLED, 1) != 0;
     }
     static boolean autoCopy(Context c) {
-        return Settings.Secure.getInt(c.getContentResolver(), SETTING_AUTOCOPY, 0) != 0;
+        // Default ON: an incoming code is copied to the clipboard so the keyboard's paste chip
+        // suggests it straight away (the "suggested paste value" for OTPs). Toggle in RM Control.
+        return Settings.Secure.getInt(c.getContentResolver(), SETTING_AUTOCOPY, 1) != 0;
     }
     static boolean notify(Context c) {
         return Settings.Secure.getInt(c.getContentResolver(), SETTING_NOTIFY, 0) != 0;
