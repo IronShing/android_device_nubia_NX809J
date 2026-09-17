@@ -50,6 +50,12 @@
 #define DEF_OVERLAY_DELAY_MS 320   // wait for keyguard + UDFPS overlay after wake
 #define DEF_TOUCH_HOLD_MS    900   // hold synthetic touch long enough for the scan
 
+// persist.sys.fp_wake.sysui=1: SystemUI consumes the finger-down uevent itself
+// (UdfpsController -> AOD-interrupt -> HAL onPointerDown, no synthetic touch and
+// no wait for the overlay window to become touchable, ~0.5 s faster). Then this
+// daemon only keeps the gesture armed. 0 = legacy wake + synthetic-touch path.
+static const char *SYSUI_PROP = "persist.sys.fp_wake.sysui";
+
 static const char *ARM_PROP = "sys.fp.arm";
 
 static void arm_gesture(const char *why) {
@@ -204,6 +210,11 @@ int main(void) {
 
         // FP-area finger-down (screen off): wake, then trigger the scan of the held finger.
         if (has_token(buf, (int)len, "aod_areameet_down=true")) {
+            if (prop_int(SYSUI_PROP, 0) == 1) {
+                ALOGI("FP finger-down -> handled by SystemUI (%s=1), re-arm only", SYSUI_PROP);
+                arm_gesture("post-wake");
+                continue;
+            }
             inject_wakeup(kfd);
             msleep(prop_int("persist.sys.fp_wake.overlay_ms", DEF_OVERLAY_DELAY_MS));
             inject_fp_touch(tfd, prop_int("persist.sys.fp_wake.hold_ms", DEF_TOUCH_HOLD_MS));

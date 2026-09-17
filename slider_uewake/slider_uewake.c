@@ -169,21 +169,30 @@ static void emit(int fd, int type, int code, int value) {
 
 /* Fire the keycode configured for this slider position. No-op unless the user selected the
  * key-code action, and a code of 0 means "nothing for this direction". */
-static void inject_keycode(int state) {
+/* Bring the uinput device in line with the current mode/codes. Called at startup AND on every
+ * slide so the device exists PERSISTENTLY the whole time key-code mode is on. This is the fix for
+ * "ButtonMapper never sees the slider" (XDA, NX123Dos): a remapper only binds input devices it can
+ * enumerate, and the old lazy-create path made the device appear at the very instant the first key
+ * was emitted -- too late for the remapper to have bound it, so the keypress went unmapped. Created
+ * up front (like the persistent shoulder-trigger evdev nodes), the device is enumerated and bound
+ * before any keypress. Recreated only when the configured codes actually change (rare user edit). */
+static void ensure_uinput(void) {
     if (prop_int(PROP_MODE, 0) != MODE_KEYCODE) { uinput_close(); return; }
-
     int on_code  = prop_int(PROP_KEY_ON, 0);
     int off_code = prop_int(PROP_KEY_OFF, 0);
     if (on_code <= 0 && off_code <= 0) { uinput_close(); return; }
-
     if (g_ufd < 0 || on_code != g_on || off_code != g_off) {
         uinput_close();
         g_ufd = uinput_open(on_code, off_code);
         if (g_ufd < 0) return;
         g_on = on_code; g_off = off_code;
     }
+}
 
-    int code = state ? on_code : off_code;
+static void inject_keycode(int state) {
+    ensure_uinput();
+    if (g_ufd < 0) return;                 /* not in key-code mode, or no codes configured */
+    int code = state ? g_on : g_off;
     if (code <= 0) return;                 /* this direction is deliberately unbound */
     emit(g_ufd, EV_KEY, code, 1); emit(g_ufd, EV_SYN, SYN_REPORT, 0);
     emit(g_ufd, EV_KEY, code, 0); emit(g_ufd, EV_SYN, SYN_REPORT, 0);
@@ -272,6 +281,9 @@ int main(void) {
                 last = test_bit(swstate, SLIDER_SW) ? 1 : 0;
                 publish(last, &seq);
             }
+            /* Create the key-code uinput device up front (when key-code mode is the saved
+             * setting) so ButtonMapper enumerates and binds it before the first slide. */
+            ensure_uinput();
         }
 
         struct pollfd pfd[2 + MAX_CLIENTS];
@@ -286,12 +298,17 @@ int main(void) {
             pfd[np++] = (struct pollfd){ .fd = g_clients[i], .events = POLLIN | POLLHUP };
         }
 
-        if (poll(pfd, np, -1) < 0) {
+        /* Finite timeout: key-code mode / codes are changed from RM Control by writing the
+         * persist props, and nothing else wakes us. Re-checking every 2 s (two property reads)
+         * creates or drops the uinput device promptly instead of on the next slide. */
+        int pr = poll(pfd, np, 2000);
+        if (pr < 0) {
             if (errno == EINTR) continue;
             ALOGE("poll: %s", strerror(errno));
             sleep(1);
             continue;
         }
+        if (pr == 0) { ensure_uinput(); continue; }
 
         int pi = 0;
         if (pfd[pi++].revents) {

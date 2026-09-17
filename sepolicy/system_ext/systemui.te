@@ -1,0 +1,14 @@
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+#
+# SystemUI (platform_app) screen-off ultrasonic-FP bridge: UdfpsController listens
+# for the touch driver's "aod_areameet_down=true" kobject uevent itself
+# (config_udfpsFingerDownUevent) and feeds it to the AOD-interrupt path, so the HAL
+# scans the held finger at once instead of fp_uewake waking the display and waiting
+# for the overlay window to accept a synthetic touch. Receive-only: writing to a
+# uevent socket stays neverallowed for app domains (app.te), and we never do it.
+allow platform_app self:netlink_kobject_uevent_socket { create bind read getopt setopt };
+
+# Live gate persist.sys.fp_wake.sysui (fp_uewake honours the same prop: 1 = SystemUI
+# path, 0 = legacy synthetic touch).
+get_prop(platform_app, fp_wake_prop)

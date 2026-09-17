@@ -349,8 +349,20 @@ PRODUCT_PACKAGES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/fp_uewake/fp_uewake.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/fp_uewake.kl
 
+# sysui=1: SystemUI's UdfpsController consumes the finger-down uevent directly
+# (config_udfpsFingerDownUevent -> AOD-interrupt -> immediate HAL scan); fp_uewake then
+# only keeps the gesture armed. 0 = legacy wake + synthetic-touch injection (~0.5 s slower).
 PRODUCT_PRODUCT_PROPERTIES += \
-    persist.sys.fp_wake.enabled=1
+    persist.sys.fp_wake.enabled=1 \
+    persist.sys.fp_wake.sysui=1
+
+# Bigger logcat ring buffers (default 256 KiB each holds only a few minutes on this chatty
+# device) so the power-menu "Capture log" (SystemUI CaptureLogAction -> RedMagicControl
+# LogCapture) still has the bug in it by the time the user long-presses. ~3 MiB more RAM.
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.logd.size.main=2M \
+    persist.logd.size.system=1M \
+    persist.logd.size.kernel=512K
 
 # Firmware (vendor blobs installed via PRODUCT_COPY_FILES in vendor mk)
 $(call inherit-product-if-exists, vendor/nubia/NX809J/NX809J-vendor.mk)
