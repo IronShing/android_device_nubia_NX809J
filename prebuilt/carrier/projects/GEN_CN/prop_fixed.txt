@@ -1,0 +1,2 @@
+persist.vendor.custom.variant.id=GEN_CN
+ro.oem.key1=GEN_CN

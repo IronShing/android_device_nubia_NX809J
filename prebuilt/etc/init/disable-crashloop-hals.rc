@@ -1,28 +1,18 @@
-# Disable two crash-looping stock-vendor HALs by stopping them the instant init
-# brings them up (and again if init schedules a restart), breaking the respawn loop.
-# Same approach as disable-ssdaemon.rc — their .rc files live on the stock /vendor
-# partition we ride and can't edit, but /product/etc/init is parsed AFTER /vendor so
-# these stop triggers win. Both stops are belt-and-suspenders because these abort
-# during init (faster than the modem ssdaemons), so catch them in running OR restarting.
+# Stop-on-respawn guards for two stock-vendor HALs. Their .rc files live on the stock
+# /vendor partition we ride and can't edit, but /product/etc/init is parsed AFTER /vendor
+# so these stop triggers win (same approach as disable-ssdaemon.rc).
 #
-# 1. gto_secure_element_aidl_service (Thales/Gemalto eSE HAL): aborts every ~5s with
-#    "Check failed: status == STATUS_OK (status=-3)" — the SE stack can't initialize on
-#    this port. Each abort flips sys.init.updatable_crashing=1, which runs
-#    flags_health_check (RescueParty) on a loop, continuously resetting feature flags
-#    and flooding the log with ~3500 AVC denials. Disabling stops that storm and the
-#    battery drain. eSE is already non-functional (it's broken); basic NFC + host card
-#    emulation (HCE) are unaffected. It IS VINTF-declared
-#    (/vendor/etc/vintf/manifest/android.hardware.secure_element.xml), but a
-#    declared-not-served HAL is not a runtime boot gate — clients fail gracefully.
-#    (Build/RE: confirm NFC still works and there's no boot regression.)
+# 1. gto_secure_element_aidl_service (Thales/GTO HAL for the ST54 eSE = eSE1). Only the JP
+#    SKU has a live eSE (Osaifu-Keitai / Suica, XDA #179): there the HAL registers and must
+#    stay up, so it is NOT stopped on `running` any more (2026-09-19; the old running-stop is
+#    what killed FeliCa). On other SKUs it exits at boot; stopping it on `restarting` breaks
+#    the 5 s respawn loop (RescueParty flags_health_check storm, log flood, battery). The
+#    framework side (com.android.se) probes a declared-but-absent eSE1 without blocking, so
+#    SIM1/SIM2 OMAPI and OpenEUICC are unaffected either way.
 #
-# 2. ifaaaidl (vendor.zte.fingerprint.ifaaaidl-service): China-market IFAA
-#    biometric-pay attestation HAL, restarting hundreds of times per boot. Not in any
-#    VINTF manifest, unused on LineageOS. The working Goodix UDFPS (ztecmdaidl) is a
-#    separate service and is unaffected.
-
-on property:init.svc.gto_secure_element_aidl_service=running
-    stop gto_secure_element_aidl_service
+# 2. ifaaaidl (vendor.zte.fingerprint.ifaaaidl-service): China-market IFAA biometric-pay
+#    attestation HAL, restarting hundreds of times per boot. Not in any VINTF manifest,
+#    unused here. The working Goodix UDFPS (ztecmdaidl) is a separate service.
 
 on property:init.svc.gto_secure_element_aidl_service=restarting
     stop gto_secure_element_aidl_service

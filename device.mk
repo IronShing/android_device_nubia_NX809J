@@ -240,12 +240,35 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/disable-ssdaemon.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-ssdaemon.rc
 
-# Disable two crash-looping stock-vendor HALs that drive a RescueParty flag-reset
-# storm + battery drain: the eSE secure_element HAL (status=-3, can't init on this
-# port; also flips sys.init.updatable_crashing on a loop) and the unused China IFAA
-# biometric-pay HAL. /product/etc/init is parsed after /vendor so the stops win.
+# Break the respawn loops of two stock-vendor HALs (RescueParty flag-reset storm +
+# battery drain): the Thales eSE1 HAL is stopped only when init tries to RESTART it
+# (it exits at boot on non-JP units but must stay up on the JP FeliCa SKU), the unused
+# China IFAA biometric-pay HAL unconditionally. /product/etc/init is parsed after
+# /vendor so the stops win.
 PRODUCT_COPY_FILES += \
     $(LOCAL_PATH)/prebuilt/etc/init/disable-crashloop-hals.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/disable-crashloop-hals.rc
+
+# HW variant flag validation. /vendor/bin/variantid (zcustom.rc, on load_persist_props)
+# reads zte_variantflag from the ztecfg partition and only accepts it if
+# /system/carrier/projects/<flag> exists (access() -- disassembled 2026-09-19); otherwise
+# "HW variant flag isn't valid" and it hard-codes GEN_NON_EEA. Stock ships that tree, we
+# didn't, so JP units never got persist.vendor.custom.variant.id=GEN_JP and the ST NFC HAL
+# stayed on the non-FeliCa firmware (XDA #179). The only consumer of the prop on this
+# vendor is that HAL. prop_fixed.txt mirrors stock (GEN_CN) but nothing reads it here.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/carrier/projects/GEN_JP/prop_fixed.txt:$(TARGET_COPY_OUT_SYSTEM)/carrier/projects/GEN_JP/prop_fixed.txt \
+    $(LOCAL_PATH)/prebuilt/carrier/projects/GEN_NON_EEA/prop_fixed.txt:$(TARGET_COPY_OUT_SYSTEM)/carrier/projects/GEN_NON_EEA/prop_fixed.txt \
+    $(LOCAL_PATH)/prebuilt/carrier/projects/GEN_EU/prop_fixed.txt:$(TARGET_COPY_OUT_SYSTEM)/carrier/projects/GEN_EU/prop_fixed.txt \
+    $(LOCAL_PATH)/prebuilt/carrier/projects/GEN_CN/prop_fixed.txt:$(TARGET_COPY_OUT_SYSTEM)/carrier/projects/GEN_CN/prop_fixed.txt \
+    $(LOCAL_PATH)/prebuilt/carrier/projects/GEN_NA/prop_fixed.txt:$(TARGET_COPY_OUT_SYSTEM)/carrier/projects/GEN_NA/prop_fixed.txt
+
+# Osaifu-Keitai (JP SKU, XDA #179): Mobile FeliCa middleware config. Without these the
+# FeliCa apps report "(030204) does not support Osaifu-Keitai"; common.cfg names the
+# OMAPI reader (00000011,eSE1). Inert on every other SKU. From the JP stock system image.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/prebuilt/etc/felica/common.cfg:$(TARGET_COPY_OUT_PRODUCT)/etc/felica/common.cfg \
+    $(LOCAL_PATH)/prebuilt/etc/felica/mfm.cfg:$(TARGET_COPY_OUT_PRODUCT)/etc/felica/mfm.cfg \
+    $(LOCAL_PATH)/prebuilt/etc/felica/mfs.cfg:$(TARGET_COPY_OUT_PRODUCT)/etc/felica/mfs.cfg
 
 # TxPwrAdmin (vendor.qti.data.txpwradmin) crashes on user-switch: its non-singleUser
 # components get spawned for secondary users, but it expects a single system-user
