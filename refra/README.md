@@ -9,9 +9,9 @@ published kit. It is pulled in only when `NX809J_PERSONAL=true` — see the gate
 |---|---|
 | upstream | <https://github.com/IacobIonut01/ReFra> (Apache-2.0) |
 | package | `com.dot.gallery` |
-| release | 5.1.3, `ReFra-5.1.3-513004-offline-WithML-arm64-v8a-release.apk` (2026-08-29) |
-| size | 369 574 778 B (352 MiB) |
-| md5 | `59c3d7fc7aad5a07493136727ee0b716` |
+| release | 5.1.5, `ReFra-5.1.5-515014-offline-WithML-arm64-v8a-release.apk` (2026-09-14) |
+| size | 369 639 980 B (352 MiB) |
+| md5 | `c17f032c2229dc010f6c686223b1e403` |
 | signature | author's, **v2 scheme only** — preserved verbatim (`presigned` + `preprocessed`) |
 | minSdk / targetSdk | 29 / 37 |
 
@@ -30,7 +30,7 @@ published kit. It is pulled in only when `NX809J_PERSONAL=true` — see the gate
 ## Refresh
 
 ```sh
-./fetch.sh 5.1.3          # downloads the same variant, verifies nothing else changed shape
+./fetch.sh 5.1.5          # downloads the same variant, verifies nothing else changed shape
 ```
 Then re-read the `zipinfo` assertion below before trusting a new upload.
 

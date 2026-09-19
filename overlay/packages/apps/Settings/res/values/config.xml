@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NX809J Settings overlay -->
+<resources>
+    <!-- Manual network selection (2026-09-18, XDA #166 "Couldn't find networks. Try again").
+         The ZTE qcrilNr START_NETWORK_SCAN handler carries maxSearchTime in a uint8 QMI field
+         and answers INVALID_ARGUMENTS (RIL error 44) for any value >= 255 s, before the modem
+         ever scans. AOSP Settings asks for 300 s, so every manual scan failed in ~1 ms. Verified
+         on-device with an app_process probe: 60..254 s scan and list networks, 255+ rejected;
+         RAT set, bands and channels make no difference. 240 s keeps a comfortable margin and is
+         still longer than any real scan. -->
+    <integer name="config_network_scan_helper_max_search_time_sec">240</integer>
+</resources>

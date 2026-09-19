@@ -1,7 +1,7 @@
 // ReFra — the gallery app for the developer's PERSONAL build only (NX809J_PERSONAL=true).
 // Never in a published Minimal / FullGApps / microG kit: see device.mk for the gate.
 //
-// Upstream: https://github.com/IacobIonut01/ReFra (Apache-2.0), release 5.1.3, the
+// Upstream: https://github.com/IacobIonut01/ReFra (Apache-2.0), release 5.1.5, the
 // arm64-v8a "offline + WithML" variant — offline = no Immich/Nextcloud/ownCloud/WebDAV/SMB
 // clients, WithML = the on-device ONNX models (face recognition, CLIP search, SAM cutout).
 // Provenance and checksum: see README.md in this directory. Unmodified author's release APK.
@@ -20,7 +20,7 @@ android_app_import {
     // lib/arm64-v8a/*.so UNCOMPRESSED, so they are mmap'd in place out of the APK. That is the
     // layout a read-only preinstall requires, so check_prebuilt_presigned_apk.py passes on its
     // own and there is no need to ship the .so separately under <appdir>/lib/arm64/.
-    // Verified 2026-09-10: `zipinfo` reports "none (stored)" for every .so.
+    // Verified 2026-09-10 (5.1.3) and 2026-09-18 (5.1.5): `zipinfo` reports "none (stored)" for every .so.
 
     product_specific: true, // -> /product/app/ReFra
     dex_preopt: {

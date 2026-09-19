@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Re-download the personal-build ReFra APK (gitignored, never published).
-# usage: ./fetch.sh [version]   e.g. ./fetch.sh 5.1.3
+# usage: ./fetch.sh [version]   e.g. ./fetch.sh 5.1.5
 set -euo pipefail
 cd "$(dirname "$0")"
-V="${1:-5.1.3}"
-# 513004 = the arm64-v8a slot of the per-ABI split numbering; it has been stable across 5.1.x
+V="${1:-5.1.5}"
+# per-ABI build number: 513004 for 5.1.3, 515014 for 5.1.5 — check the release page
 # but check the release page if this 404s.
-A="ReFra-${V}-513004-offline-WithML-arm64-v8a-release.apk"
+A="ReFra-${V}-${B:-515014}-offline-WithML-arm64-v8a-release.apk"
 U="https://github.com/IacobIonut01/ReFra/releases/download/${V}/${A}"
 echo "==> $U"
 curl -fSL --progress-bar -o ReFra.apk.tmp "$U"
