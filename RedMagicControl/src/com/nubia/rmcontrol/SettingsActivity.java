@@ -2200,6 +2200,26 @@ public class SettingsActivity extends Activity {
         note(root, "When on, every app you install from now on is added here with everything "
                 + "blocked, so a new app gets nothing until you tick what it may use below.");
 
+        LinearLayout callRow = labelledRow(root, "Calls just work");
+        final Switch calls = new Switch(this);
+        calls.setChecked(PrivacyGuard.callAware());
+        calls.setOnCheckedChangeListener((v, on) -> PrivacyGuard.setCallAware(getApplicationContext(), on));
+        callRow.addView(calls);
+        note(root, "A guarded app that is in a call (its call notification, phone-call service or "
+                + "call-audio recorder is up) gets the mic without asking; on a video call the "
+                + "camera too. Never location. Both are guarded again the moment the call ends. "
+                + "A mic grab that isn't a call still asks. Per app: “Ask even during calls” "
+                + "in its editor.");
+
+        LinearLayout backoffRow = labelledRow(root, "Back off repeated alerts");
+        final Switch backoff = new Switch(this);
+        backoff.setChecked(PrivacyGuard.backoff());
+        backoff.setOnCheckedChangeListener((v, on) -> PrivacyGuard.setBackoff(getApplicationContext(), on));
+        backoffRow.addView(backoff);
+        note(root, "An app you keep ignoring (Google polling the mic and location in the "
+                + "background, say) is alerted 5× less often each time: 1 min, 5, 25, ~2 h, "
+                + "then every 6 h. Answering an alert or opening the app resets it.");
+
         mManageGuarded = new Button(this);
         mManageGuarded.setOnClickListener(v -> showGuardedAppsManager(master));
         root.addView(mManageGuarded);
@@ -2494,7 +2514,7 @@ public class SettingsActivity extends Activity {
                 PrivacyGuard.setMask(getApplicationContext(), pkg, on ? (cur | bit) : (cur & ~bit));
                 if (onChange != null) onChange.run();
             });
-            // Long-press a blocked item to temporarily allow just it for 5 / 10 / 15 minutes.
+            // Long-press a blocked item to temporarily allow just it for 5 / 10 minutes.
             cb.setOnLongClickListener(v -> {
                 if ((PrivacyGuard.maskOf(this, pkg) & bit) == 0) return false;   // not blocked
                 final long[] ch = PrivacyGuard.ALLOW_CHOICES_MS;
@@ -2521,16 +2541,27 @@ public class SettingsActivity extends Activity {
             final TextView hint = new TextView(this);
             hint.setTextSize(11);
             hint.setTextColor(0xFF888888);
-            hint.setText("Long-press a blocked item to allow just it for 5 / 10 / 15 min.");
+            hint.setText("Long-press a blocked item to allow just it for 5 / 10 min.");
             block.addView(hint);
         }
 
         final android.widget.CheckBox mute = new android.widget.CheckBox(this);
-        mute.setText("Mute \u201cblocked\u201d alerts for this app");
+        mute.setText("Always block: no \u201cblocked\u201d alerts for this app");
         mute.setChecked(PrivacyGuard.muted(this, pkg));
         mute.setOnCheckedChangeListener((v, on) ->
                 PrivacyGuard.setMuted(getApplicationContext(), pkg, on));
         block.addView(mute);
+
+        // Call-aware allow opt-out: only meaningful when mic or camera is guarded for this app.
+        if ((PrivacyGuard.maskOf(this, pkg) & (PrivacyGuard.MIC | PrivacyGuard.CAMERA)) != 0
+                && PrivacyGuard.callAware()) {
+            final android.widget.CheckBox callAsk = new android.widget.CheckBox(this);
+            callAsk.setText("Ask even during calls (no automatic mic / camera)");
+            callAsk.setChecked(PrivacyGuard.callAsk(this, pkg));
+            callAsk.setOnCheckedChangeListener((v, on) ->
+                    PrivacyGuard.setCallAsk(getApplicationContext(), pkg, on));
+            block.addView(callAsk);
+        }
 
         // Android Auto: only meaningful when mic or location is guarded for this app.
         if ((PrivacyGuard.maskOf(this, pkg) & PrivacyGuard.AA_EXEMPT) != 0) {
@@ -2569,9 +2600,12 @@ public class SettingsActivity extends Activity {
             final TextView rule = new TextView(this);
             rule.setTextSize(12);
             rule.setTextColor(accentColor());
-            rule.setText("Always allow " + PrivacyGuard.permWord(bit) + " on the "
-                    + PrivacyGuard.screenLabel(this, pkg, cls) + " screen for " + (ms / 60000)
-                    + " min \u2014 tap to forget");
+            rule.setText(ms == PrivacyGuard.SCREEN_BLOCK
+                    ? "Always block " + PrivacyGuard.permWord(bit) + " on the "
+                            + PrivacyGuard.screenLabel(this, pkg, cls) + " screen, quietly \u2014 tap to forget"
+                    : "Always allow " + PrivacyGuard.permWord(bit) + " on the "
+                            + PrivacyGuard.screenLabel(this, pkg, cls) + " screen for " + (ms / 60000)
+                            + " min \u2014 tap to forget");
             rule.setOnClickListener(v -> {
                 PrivacyGuard.setAutoAllow(getApplicationContext(), pkg, cls, bit, 0);
                 rule.setVisibility(android.view.View.GONE);

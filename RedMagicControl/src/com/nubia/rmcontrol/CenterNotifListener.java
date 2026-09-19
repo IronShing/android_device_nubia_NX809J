@@ -61,11 +61,52 @@ public class CenterNotifListener extends NotificationListenerService {
         final Set<String> s = apps(c);
         if (on) s.add(pkg); else s.remove(pkg);
         cp(c).edit().putStringSet(KEY_PKGS, s).apply();
-        // A listener sees every notification on the device: hold the grant only while there is
-        // at least one chosen app.
-        setEnabled(c, !s.isEmpty());
+        // A listener sees every notification on the device: hold the grant only while something
+        // needs it (a chosen app here, or Privacy Guard's call detection).
+        setEnabled(c, wanted(c));
     }
-    static void ensureEnabled(Context c) { if (!apps(c).isEmpty()) setEnabled(c, true); }
+    /** Anyone needs the listener bound? Center cards for chosen apps, or Privacy Guard reading
+     *  call notifications (CallStyle/CATEGORY_CALL) to tell a call from a plain mic grab. */
+    static boolean wanted(Context c) {
+        return !apps(c).isEmpty() || (PrivacyGuard.enabled() && PrivacyGuard.callAware());
+    }
+    static void ensureEnabled(Context c) { setEnabled(c, wanted(c)); }
+
+    /** Bound instance, for the pull-style queries below; null while the listener is not connected. */
+    private static volatile CenterNotifListener sSelf;
+
+    /**
+     * Call state the package's own notifications claim: {@link CallDetect#VIDEO} for a CallStyle
+     * notification flagged video, {@link CallDetect#VOICE} for any other CallStyle / CATEGORY_CALL
+     * notification, {@link CallDetect#NONE} for none, -1 when the listener is not bound (unknown).
+     */
+    static int callState(String pkg) {
+        final CenterNotifListener self = sSelf;
+        if (self == null) return -1;
+        try {
+            final StatusBarNotification[] all = self.getActiveNotifications();
+            if (all == null) return CallDetect.NONE;
+            int s = CallDetect.NONE;
+            for (StatusBarNotification sbn : all) {
+                if (sbn == null || !pkg.equals(sbn.getPackageName())) continue;
+                final Notification n = sbn.getNotification();
+                if (n == null || !isCall(n)) continue;
+                if (n.extras != null && n.extras.getBoolean(Notification.EXTRA_CALL_IS_VIDEO, false)) {
+                    return CallDetect.VIDEO;
+                }
+                s = CallDetect.VOICE;
+            }
+            return s;
+        } catch (Throwable t) {
+            Log.w(TAG, "callState", t);
+            return -1;
+        }
+    }
+
+    private static boolean isCall(Notification n) {
+        return Notification.CATEGORY_CALL.equals(n.category)
+                || (n.extras != null && n.extras.containsKey(Notification.EXTRA_CALL_TYPE));
+    }
 
     /**
      * Grant/revoke our notification-listener access through NotificationManager
@@ -134,8 +175,15 @@ public class CenterNotifListener extends NotificationListenerService {
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
-        if (sbn != null) mShown.remove(sbn.getKey());
+        if (sbn == null) return;
+        mShown.remove(sbn.getKey());
+        // A call notification going away is the earliest "call ended" signal for Privacy Guard's
+        // call-bound allowances (it re-checks the other signals before re-guarding).
+        final Notification n = sbn.getNotification();
+        if (n != null && isCall(n)) PrivacyGuard.onCallNotificationGone(this, sbn.getPackageName());
     }
+
+    @Override public void onListenerConnected() { sSelf = this; }
 
     private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
@@ -252,6 +300,6 @@ public class CenterNotifListener extends NotificationListenerService {
         mCard = null;
     }
 
-    @Override public void onListenerDisconnected() { mMain.post(this::removeCard); }
-    @Override public void onDestroy() { mMain.post(this::removeCard); super.onDestroy(); }
+    @Override public void onListenerDisconnected() { sSelf = null; mMain.post(this::removeCard); }
+    @Override public void onDestroy() { sSelf = null; mMain.post(this::removeCard); super.onDestroy(); }
 }

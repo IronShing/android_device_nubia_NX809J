@@ -1,9 +1,11 @@
 /*
  * Foreground Privacy Guard prompt: a dialog drawn over the app that just got blocked, instead of
  * a heads-up the user has to pull down. Started by PrivacyGuard.notifyBlocked only when the
- * blocked package is the one on screen. Offers the timed allow (5 / 10 / 15 min) and a
- * per-screen rule ("always allow on this screen") so e.g. Google Lens can get the camera every
- * time it opens while the rest of the Google app stays blocked.
+ * blocked package is the one on screen. Offers the timed allow (5 / 10 min), Always block (mute) and
+ * per-screen rules: "always allow on this screen" so e.g. Google Lens can get the camera every
+ * time it opens while the rest of the Google app stays blocked, and its mirror "always block on
+ * this screen" so a call screen that probes location on every call stops asking there while the
+ * same ask elsewhere in the app still prompts.
  *
  * singleInstance: a second permission blocked while the dialog is up (video call = microphone,
  * then camera a few ms later) arrives through onNewIntent and is merged into the same dialog --
@@ -101,8 +103,8 @@ public class PrivacyPromptActivity extends Activity {
         body.setPadding(pad, dp(8), pad, 0);
 
         final TextView msg = new TextView(this);
-        msg.setText("Blocked by Privacy guard; " + label + " still thinks it has permission. "
-                + "Allow just its " + what + " for a few minutes if you need it right now.");
+        msg.setText("Blocked; " + label + " can't tell. Allow its " + what
+                + " for a few minutes, or Always block to stop asking.");
         body.addView(msg);
 
         final RadioGroup mins = new RadioGroup(this);
@@ -120,11 +122,18 @@ public class PrivacyPromptActivity extends Activity {
         body.addView(mins);
 
         final CheckBox always = new CheckBox(this);
+        final CheckBox alwaysBlock = new CheckBox(this);
         if (cls != null) {
-            always.setText("Always allow on this screen (" + PrivacyGuard.screenLabel(this, pkg, cls)
+            final String screen = PrivacyGuard.screenLabel(this, pkg, cls);
+            always.setText("Always allow on this screen (" + screen
                     + ") for the chosen time, without asking");
             always.setPadding(0, dp(8), 0, 0);
             body.addView(always);
+            alwaysBlock.setText("Always block on this screen (" + screen + "), without asking");
+            body.addView(alwaysBlock);
+            // One or the other for this screen.
+            always.setOnCheckedChangeListener((v, on) -> { if (on) alwaysBlock.setChecked(false); });
+            alwaysBlock.setOnCheckedChangeListener((v, on) -> { if (on) always.setChecked(false); });
         }
 
         mDialog = new AlertDialog.Builder(this, theme)
@@ -139,6 +148,17 @@ public class PrivacyPromptActivity extends Activity {
                     }
                 })
                 .setNegativeButton("Keep blocked", null)
+                .setNeutralButton("Always block", (d, w) -> {
+                    // Box ticked: quiet-block rule for this screen only (the app stays unmuted
+                    // elsewhere). Otherwise the per-app alert mute as before.
+                    if (cls != null && alwaysBlock.isChecked()) {
+                        for (int b = 1; b != 0 && b <= bits; b <<= 1) {
+                            if ((bits & b) != 0) PrivacyGuard.setAutoAllow(this, pkg, cls, b, PrivacyGuard.SCREEN_BLOCK);
+                        }
+                    } else {
+                        PrivacyGuard.setMuted(this, pkg, true);
+                    }
+                })
                 .setOnDismissListener(d -> finish())
                 .create();
         mDialog.setCanceledOnTouchOutside(true);

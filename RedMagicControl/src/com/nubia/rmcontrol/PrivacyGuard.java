@@ -55,6 +55,13 @@ final class PrivacyGuard {
     /** Read by PermissionPolicyService (frameworks/base patch). */
     static final String SETTING = "rm_privacy_guard";
     static final String PROP_AUTO = "persist.sys.rm.privacy_auto";  // auto-guard new installs
+    /** Call-aware allow (default on): a guarded app that is in a call (CallDetect) gets its mic
+     *  without asking, and the camera too when the call is video; both end with the call. */
+    static final String PROP_CALLS = "persist.sys.rm.privacy_calls";
+    /** Back off repeated background alerts (default on): an ignored "blocked" heads-up for the
+     *  same app + permission waits 5x longer each time (1 min, 5, 25, ~2 h, 6 h cap) until the
+     *  user answers one or the app comes to the front. */
+    static final String PROP_BACKOFF = "persist.sys.rm.privacy_backoff";
 
     static final int CAMERA = 1;
     static final int MIC = 2;
@@ -126,7 +133,7 @@ final class PrivacyGuard {
 
     static final long ALLOW_MS = 10 * 60 * 1000L;
     /** Durations offered for a temporary per-permission allowance. */
-    static final long[] ALLOW_CHOICES_MS = { 5 * 60 * 1000L, 10 * 60 * 1000L, 15 * 60 * 1000L };
+    static final long[] ALLOW_CHOICES_MS = { 5 * 60 * 1000L, 10 * 60 * 1000L };
 
     /** Android manifest permissions that map to a guard bit (for only-show-requested filtering). */
     static String[] permsForBit(int bit) {
@@ -188,13 +195,32 @@ final class PrivacyGuard {
     private static final String PREFS = "privacy";
     private static final String KEY_MASK = "mask:";      // + pkg -> int
     private static final String KEY_UNTIL = "until:";    // + pkg -> long wall-clock ms
-    private static final String KEY_MUTE = "mute:";      // + pkg -> boolean: no "blocked" alerts
+    private static final String KEY_MUTE = "mute:";      // + pkg -> boolean: no "blocked" alerts or prompts
     private static final String KEY_AA = "aa:";          // + pkg -> boolean: lift mic/loc during Android Auto
+    private static final String KEY_CALLASK = "callask:"; // + pkg -> boolean: ask even during its calls
+    private static final String KEY_CALLBOUND = "call:"; // + pkg:bit -> boolean: allowance ends with the call
+    /** Safety cap on a call-bound allowance in case every "call ended" signal is missed. */
+    private static final long CALL_ALLOW_CAP_MS = 6 * 60 * 60 * 1000L;
+    /** Re-check the call signals this often while a call-bound allowance is up. */
+    private static final long CALL_POLL_MS = 15 * 1000L;
+    /** A camera attempt this soon after the call began is the app warming up for a possible
+     *  video switch (WhatsApp opens it on plain voice calls too), not the user turning video on:
+     *  blocked quietly. Later, with the app on screen, it is asked about like any other attempt. */
+    private static final long CALL_CAMERA_GRACE_MS = 10 * 1000L;
+    /** Let the call notification / record client land before deciding what a mic attempt is. */
+    private static final long CALL_DECIDE_DELAY_MS = 600;
+    /** After a call ends the app tears down and grabs the mic/camera once more (WhatsApp does,
+     *  ~1 s after hang-up); alerts for that are noise, so sensor attempts stay quiet this long. */
+    private static final long CALL_END_GRACE_MS = 10 * 1000L;
     // Screen rule: + pkg/activityClass:bit -> long ms. While that activity is in front the
     // permission is auto-allowed for ms (renewed while it stays in front). Learnt from the
     // "always allow on this screen" box in the foreground prompt (e.g. Google Lens = the Google
     // app's lens.MainActivity, so the camera can be lifted for Lens alone, not for all of Google).
+    // ms == SCREEN_BLOCK is the opposite rule ("always block on this screen"): stays guarded and
+    // the prompt is skipped on that screen only (WhatsApp's call screen probing location on
+    // every call, 2026-09-19), while the same ask elsewhere in the app still prompts.
     private static final String KEY_AUTO = "auto:";
+    static final long SCREEN_BLOCK = -1L;
     static final String EXTRA_CLS = "cls";
 
     /** Ops lifted for an AA-allowed package while Android Auto (car mode) is connected. */
@@ -208,6 +234,11 @@ final class PrivacyGuard {
     static final String ACTION_EXTEND = "com.nubia.rmcontrol.PRIVACY_EXTEND";
     // Per-allowance expiry alarm: drop the countdown notification, re-guard, and re-prompt.
     static final String ACTION_ALLOW_EXPIRED = "com.nubia.rmcontrol.PRIVACY_ALLOW_EXPIRED";
+    // "Guard now" on the in-call note: end the package's call-bound allowances early.
+    static final String ACTION_END_CALL_ALLOW = "com.nubia.rmcontrol.PRIVACY_END_CALL_ALLOW";
+    // "Always block" on a blocked / expired prompt: keep the guard, stop asking (= the per-app
+    // alert mute in the app's Privacy row, where it can be switched off again).
+    static final String ACTION_MUTE = "com.nubia.rmcontrol.PRIVACY_MUTE";
     static final String EXTRA_PKG = "pkg";
     static final String EXTRA_BIT = "bit";
     static final String EXTRA_MS = "ms";
@@ -266,7 +297,8 @@ final class PrivacyGuard {
     static void setMask(Context ctx, String pkg, int mask) {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
         if (mask == 0) {
-            ed.remove(KEY_MASK + pkg).remove(KEY_MUTE + pkg).remove(KEY_AA + pkg);
+            ed.remove(KEY_MASK + pkg).remove(KEY_MUTE + pkg).remove(KEY_AA + pkg)
+                    .remove(KEY_CALLASK + pkg);
             revokeAllAllows(ctx, ed, pkg);
             removeAutoRules(ed, prefs(ctx).getAll(), pkg);
         }
@@ -277,6 +309,29 @@ final class PrivacyGuard {
 
     static boolean autoEnabled() {
         return Prop.getBool(PROP_AUTO, false);
+    }
+
+    static boolean callAware() { return Prop.getBool(PROP_CALLS, true); }
+    static void setCallAware(Context ctx, boolean on) {
+        Prop.set(PROP_CALLS, on ? "1" : "0");
+        CenterNotifListener.ensureEnabled(ctx);   // the listener grant follows the need
+        if (!on) endAllCallAllows(ctx);
+    }
+    static boolean backoff() { return Prop.getBool(PROP_BACKOFF, true); }
+    static void setBackoff(Context ctx, boolean on) {
+        Prop.set(PROP_BACKOFF, on ? "1" : "0");
+        synchronized (sIgnored) { sIgnored.clear(); }
+    }
+
+    /** Per-app opt-out of call-aware allow: ask this app's calls like any other attempt. */
+    static boolean callAsk(Context ctx, String pkg) {
+        return prefs(ctx).getBoolean(KEY_CALLASK + pkg, false);
+    }
+    static void setCallAsk(Context ctx, String pkg, boolean on) {
+        final SharedPreferences.Editor ed = prefs(ctx).edit();
+        if (on) ed.putBoolean(KEY_CALLASK + pkg, true); else ed.remove(KEY_CALLASK + pkg);
+        ed.apply();
+        if (on) endCallAllows(ctx, pkg);
     }
 
     static void setAutoEnabled(Context ctx, boolean on) {
@@ -300,9 +355,10 @@ final class PrivacyGuard {
     /** Wall-clock deadline until which the package is temporarily un-guarded, or 0. */
     /**
      * Per-app alert mute. The guard still applies -- this only silences the "<app> tried to use
-     * the …" notification for apps that poll constantly (a chat app trying the mic on every
-     * call, a launcher polling location) where the alert is noise. The "Allow for 10 min"
-     * action is still reachable from the app's row in the Privacy tab.
+     * the …" heads-up and in-front prompt for apps that poll constantly (a chat app trying the
+     * mic on every call, a launcher polling location) where the alert is noise. The "Allow for
+     * 10 min" action is still reachable from the app's row in the Privacy tab; a single noisy
+     * screen is better handled by the per-screen quiet rule (SCREEN_BLOCK).
      */
     static boolean muted(Context ctx, String pkg) {
         return prefs(ctx).getBoolean(KEY_MUTE + pkg, false);
@@ -312,7 +368,11 @@ final class PrivacyGuard {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
         if (on) ed.putBoolean(KEY_MUTE + pkg, true); else ed.remove(KEY_MUTE + pkg);
         ed.apply();
-        if (on) cancelNotification(ctx, pkg);   // take down one already showing
+        if (on) {                                // take down any already showing
+            cancelNotification(ctx, pkg);
+            final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+            for (int b = 1; b != 0 && b <= ALL; b <<= 1) if (allowedUntil(ctx, pkg, b) == 0) nm.cancel(pkg, b);   // keep live countdowns
+        }
     }
 
     // ---- screen rules: auto-allow while a specific activity is in front --------------------
@@ -329,18 +389,21 @@ final class PrivacyGuard {
         return KEY_AUTO + pkg + "/" + cls + ":" + bit;
     }
 
-    /** ms the rule auto-allows for, or 0 if there is no rule for this screen + permission. */
+    /**
+     * ms the rule auto-allows for, SCREEN_BLOCK for a quiet-block rule, or 0 if there is no
+     * rule for this screen + permission.
+     */
     static long autoAllowMs(Context ctx, String pkg, String cls, int bit) {
         return prefs(ctx).getLong(autoKey(pkg, cls, bit), 0);
     }
 
-    /** ms <= 0 removes the rule. */
+    /** ms > 0 = allow rule, SCREEN_BLOCK = quiet-block rule, 0 removes the rule. */
     static void setAutoAllow(Context ctx, String pkg, String cls, int bit, long ms) {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
-        if (ms > 0) ed.putLong(autoKey(pkg, cls, bit), ms); else ed.remove(autoKey(pkg, cls, bit));
+        if (ms != 0) ed.putLong(autoKey(pkg, cls, bit), ms); else ed.remove(autoKey(pkg, cls, bit));
         ed.apply();
-        Log.i(TAG, (ms > 0 ? "screen rule " : "screen rule removed ") + pkg + "/" + cls + " "
-                + permWord(bit) + (ms > 0 ? " " + (ms / 60000) + " min" : ""));
+        Log.i(TAG, (ms > 0 ? "screen rule " : ms == 0 ? "screen rule removed " : "screen block rule ")
+                + pkg + "/" + cls + " " + permWord(bit) + (ms > 0 ? " " + (ms / 60000) + " min" : ""));
         if (ms > 0) checkAutoAllow(ctx, sTop);
     }
 
@@ -471,8 +534,10 @@ final class PrivacyGuard {
 
     /** Temporarily un-guard ONE permission of an app for ms milliseconds. */
     static void allowFor(Context ctx, String pkg, int bit, long ms) {
-        prefs(ctx).edit().putLong(untilKey(pkg, bit), System.currentTimeMillis() + ms).apply();
+        prefs(ctx).edit().putLong(untilKey(pkg, bit), System.currentTimeMillis() + ms)
+                .remove(callKey(pkg, bit)).apply();
         Log.i(TAG, "allow " + pkg + " " + permWord(bit) + " for " + (ms / 1000) + " s");
+        synchronized (sIgnored) { sIgnored.remove(pkg + ":" + bit); }   // the user answered
         apply(ctx);
         cancelNotification(ctx, pkg);            // take down the "blocked / allow?" prompt
         notifyAllowed(ctx, pkg, bit);            // put up the live countdown + Extend
@@ -494,12 +559,24 @@ final class PrivacyGuard {
     /** A temporary allowance ran out: drop the countdown notification, re-guard, re-prompt to renew. */
     static void onAllowExpired(Context ctx, String pkg, int bit) {
         if (prefs(ctx).getLong(untilKey(pkg, bit), 0) > System.currentTimeMillis()) return;  // was extended
-        prefs(ctx).edit().remove(untilKey(pkg, bit)).apply();
+        final boolean callBound = prefs(ctx).getBoolean(callKey(pkg, bit), false);
+        prefs(ctx).edit().remove(untilKey(pkg, bit)).remove(callKey(pkg, bit)).apply();
         ctx.getSystemService(NotificationManager.class).cancel(pkg, bit);   // the countdown notif
         apply(ctx);                                                          // re-guard the bit
+        markReguarded(pkg);
+        if (callBound) { Log.i(TAG, "call allowance cap hit " + pkg + " " + permWord(bit)); return; }
         if ((maskOf(ctx, pkg) & bit) != 0) {                                 // still guarded → offer renew
             final long auto = autoAllowForTop(ctx, pkg, bit);
             if (auto > 0) { allowFor(ctx, pkg, bit, auto); return; }         // its screen is still up: renew
+            // Contacts/photos/files/...: only worth a renew offer while the app is being used;
+            // otherwise it simply asks again (on screen) the next time it needs them.
+            if (!isSensorBit(bit)) {
+                final ComponentName top = sTop;
+                if (top == null || !top.getPackageName().equals(pkg)) {
+                    Log.i(TAG, "allowance ended quietly " + pkg + " " + permWord(bit));
+                    return;
+                }
+            }
             sLastNotified.remove(pkg + ":" + bit);
             notifyExpiredPrompt(ctx, pkg, bit);
         }
@@ -515,7 +592,7 @@ final class PrivacyGuard {
     /** Manual "guard again now": drop the allowance AND its countdown notification + expiry alarm,
      *  otherwise the chronometer keeps running and the alarm later posts a bogus "access ended". */
     static void revokeAllow(Context ctx, String pkg, int bit) {
-        prefs(ctx).edit().remove(untilKey(pkg, bit)).apply();
+        prefs(ctx).edit().remove(untilKey(pkg, bit)).remove(callKey(pkg, bit)).apply();
         cancelAllowExpiry(ctx, pkg, bit);
         ctx.getSystemService(NotificationManager.class).cancel(pkg, bit);
         apply(ctx);
@@ -526,8 +603,177 @@ final class PrivacyGuard {
         final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         for (int b : BITS) {
             if (prefs(ctx).contains(untilKey(pkg, b))) { cancelAllowExpiry(ctx, pkg, b); nm.cancel(pkg, b); }
-            ed.remove(untilKey(pkg, b));
+            ed.remove(untilKey(pkg, b)).remove(callKey(pkg, b));
         }
+    }
+
+    // ---- call-aware allow -----------------------------------------------------------------
+    // A call is the one time nearly everyone wants the mic (and, for video, the camera) to just
+    // work, and it is also the one mic use the platform can vouch for: see CallDetect. So while a
+    // guarded app is in a call its mic is lifted without a prompt, the camera too on a video
+    // call, and both are guarded again the moment the call ends. Location is never part of it.
+
+    private static String callKey(String pkg, int bit) { return KEY_CALLBOUND + pkg + ":" + bit; }
+
+    /** elapsedRealtime the package was first seen in a call (for the camera grace), else absent. */
+    private static final ArrayMap<String, Long> sCallSince = new ArrayMap<>();
+    /** elapsedRealtime a package's call-bound allowance was ended (for the hang-up grace). */
+    private static final ArrayMap<String, Long> sCallEnded = new ArrayMap<>();
+
+    /** elapsedRealtime a package was automatically re-guarded (allowance expiry, call end). Apps
+     *  re-check every op the moment its mode flips, and those checks arrive here as "attempts";
+     *  alerting on them would nag about nothing, so attempts this soon after are ignored. */
+    private static final ArrayMap<String, Long> sReguarded = new ArrayMap<>();
+    private static final long REGUARD_GRACE_MS = 3 * 1000L;
+
+    private static void markReguarded(String pkg) {
+        synchronized (sReguarded) { sReguarded.put(pkg, SystemClock.elapsedRealtime()); }
+    }
+    private static boolean justReguarded(String pkg) {
+        final Long t;
+        synchronized (sReguarded) { t = sReguarded.get(pkg); }
+        return t != null && SystemClock.elapsedRealtime() - t < REGUARD_GRACE_MS;
+    }
+
+    private static boolean justEndedCall(String pkg) {
+        final Long t;
+        synchronized (sCallEnded) { t = sCallEnded.get(pkg); }
+        return t != null && SystemClock.elapsedRealtime() - t < CALL_END_GRACE_MS;
+    }
+
+    private static boolean callAllowApplies(Context ctx, String pkg, int bit) {
+        return callAware() && (bit == MIC || bit == CAMERA) && !callAsk(ctx, pkg);
+    }
+
+    /** Mic / camera attempt from a call-eligible app: classify it once the signals have settled. */
+    private static void decideCallAttempt(Context ctx, String pkg, int bit) {
+        if (allowedUntil(ctx, pkg, bit) != 0) return;            // lifted meanwhile
+        final int call = CallDetect.of(ctx, pkg);
+        final long now = SystemClock.elapsedRealtime();
+        long since;
+        synchronized (sCallSince) {
+            if (call == CallDetect.NONE) { sCallSince.remove(pkg); since = now; }
+            else {
+                final Long t = sCallSince.get(pkg);
+                if (t == null) sCallSince.put(pkg, since = now); else since = t;
+            }
+        }
+        if (call == CallDetect.NONE) {                           // a plain mic/camera grab: ask
+            if (justEndedCall(pkg)) { Log.i(TAG, "post-call " + permWord(bit) + " blocked quietly: " + pkg); return; }
+            if (isProbeBurst(pkg)) { Log.i(TAG, "permission probe, quiet: " + pkg + " " + permWord(bit)); return; }
+            notifyBlocked(ctx, pkg, bit);
+            return;
+        }
+        if (bit == MIC || call == CallDetect.VIDEO) {
+            Log.i(TAG, "in-call allow " + pkg + " " + permWord(bit) + " (" + CallDetect.name(call) + ")");
+            allowForCall(ctx, pkg, bit);
+            return;
+        }
+        // Camera on a voice call. Early = the app warming up, quiet; later with the app in front
+        // = the user is switching to video, so ask (the dialog is for the camera alone).
+        final ComponentName top = sTop;
+        final boolean inFront = top != null && top.getPackageName().equals(pkg);
+        if (inFront && now - since >= CALL_CAMERA_GRACE_MS) {
+            notifyBlocked(ctx, pkg, bit);
+        } else {
+            Log.i(TAG, "camera during voice call blocked quietly: " + pkg);
+        }
+    }
+
+    /** Lift one permission until the call ends (capped), with a quiet "until the call ends" note. */
+    private static void allowForCall(Context ctx, String pkg, int bit) {
+        prefs(ctx).edit().putLong(untilKey(pkg, bit), System.currentTimeMillis() + CALL_ALLOW_CAP_MS)
+                .putBoolean(callKey(pkg, bit), true).apply();
+        apply(ctx);
+        cancelNotification(ctx, pkg);
+        notifyCallAllowed(ctx, pkg, bit);
+        scheduleAllowExpiry(ctx, pkg, bit);
+        sHandler.removeCallbacks(sCallPoll);
+        sHandler.postDelayed(sCallPoll, CALL_POLL_MS);
+    }
+
+    /** Packages with a call-bound allowance up right now. */
+    private static List<String> callBoundPkgs(Context ctx) {
+        final List<String> out = new ArrayList<>();
+        for (Map.Entry<String, ?> e : prefs(ctx).getAll().entrySet()) {
+            if (!e.getKey().startsWith(KEY_CALLBOUND) || !Boolean.TRUE.equals(e.getValue())) continue;
+            final String rest = e.getKey().substring(KEY_CALLBOUND.length());
+            final int colon = rest.lastIndexOf(':');
+            if (colon > 0 && !out.contains(rest.substring(0, colon))) out.add(rest.substring(0, colon));
+        }
+        return out;
+    }
+
+    private static Context sApp;
+    private static final Runnable sCallPoll = PrivacyGuard::pollCalls;
+    private static void pollCalls() {
+        final Context ctx = sApp;
+        if (ctx == null) return;
+        boolean any = false;
+        for (String pkg : callBoundPkgs(ctx)) {
+            if (CallDetect.of(ctx, pkg) == CallDetect.NONE) endCallAllows(ctx, pkg);
+            else any = true;
+        }
+        if (any) sHandler.postDelayed(sCallPoll, CALL_POLL_MS);
+    }
+
+    /** The listener saw the package's call notification go: re-check soon (the FGS and the record
+     *  client usually linger a moment; the poll confirms before re-guarding). */
+    static void onCallNotificationGone(Context ctx, String pkg) {
+        if (sHandler == null || !callAware()) return;
+        sHandler.postDelayed(() -> {
+            final Context app = sApp;
+            if (app != null && callBoundPkgs(app).contains(pkg)
+                    && CallDetect.of(app, pkg) == CallDetect.NONE) endCallAllows(app, pkg);
+        }, 1500);
+    }
+
+    /** The call is over: drop the package's call-bound allowances and its note, guard again. */
+    static void endCallAllows(Context ctx, String pkg) {
+        final SharedPreferences.Editor ed = prefs(ctx).edit();
+        final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+        boolean changed = false;
+        for (int b : BITS) {
+            if (!prefs(ctx).getBoolean(callKey(pkg, b), false)) continue;
+            ed.remove(untilKey(pkg, b)).remove(callKey(pkg, b));
+            cancelAllowExpiry(ctx, pkg, b);
+            nm.cancel(pkg, b);
+            changed = true;
+        }
+        synchronized (sCallSince) { sCallSince.remove(pkg); }
+        if (!changed) return;
+        ed.apply();
+        synchronized (sCallEnded) { sCallEnded.put(pkg, SystemClock.elapsedRealtime()); }
+        Log.i(TAG, "call ended: " + pkg + " guarded again");
+        apply(ctx);
+        markReguarded(pkg);
+    }
+
+    private static void endAllCallAllows(Context ctx) {
+        for (String pkg : callBoundPkgs(ctx)) endCallAllows(ctx, pkg);
+    }
+
+    /** Quiet ongoing "X is in a call — mic allowed until it ends" with a Guard-now action. */
+    private static void notifyCallAllowed(Context ctx, String pkg, int bit) {
+        final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+        nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Privacy guard",
+                NotificationManager.IMPORTANCE_DEFAULT));
+        final PendingIntent guard = PendingIntent.getBroadcast(ctx, (pkg + ":endcall:" + bit).hashCode(),
+                new Intent(ACTION_END_CALL_ALLOW).setClass(ctx, PrivacyGuardReceiver.class)
+                        .putExtra(EXTRA_PKG, pkg),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        final Notification n = new Notification.Builder(ctx, CHANNEL)
+                .setSmallIcon(R.drawable.ic_privacy)
+                .setContentTitle("\uD83D\uDCDE " + label(ctx, pkg) + " is in a call \u2014 "
+                        + permWord(bit) + " allowed")
+                .setContentText("Guarded again when the call ends.")
+                .setContentIntent(editorIntent(ctx, pkg))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .addAction(new Notification.Action.Builder(null, "Guard now", guard).build())
+                .build();
+        nm.notify(pkg, bit, n);
     }
 
     private static PendingIntent allowExpiryIntent(Context ctx, String pkg, int bit) {
@@ -607,7 +853,10 @@ final class PrivacyGuard {
         final HandlerThread ht = new HandlerThread("privacy-guard");
         ht.start();
         sHandler = new Handler(ht.getLooper());
+        sApp = ctx.getApplicationContext();
         startForegroundWatch(ctx.getApplicationContext());
+        // A call-bound allowance left from before a restart: resume watching for its end.
+        if (!callBoundPkgs(sApp).isEmpty()) sHandler.postDelayed(sCallPoll, CALL_POLL_MS);
         final AppOpsManager aom = ctx.getSystemService(AppOpsManager.class);
         final Context app = ctx.getApplicationContext();
         // Auto-guard new installs. PackageManager sends PACKAGE_ADDED without
@@ -624,7 +873,7 @@ final class PrivacyGuard {
             // requests are notes as well -- so watch both.
             aom.startWatchingStarted(new int[] {
                     AppOpsManager.OP_CAMERA, AppOpsManager.OP_RECORD_AUDIO },
-                    (op, uid, pkg, tag, flags, result) -> onAttempt(app, op, pkg, result));
+                    (op, uid, pkg, tag, flags, result) -> onAttempt(app, op, pkg, result, flags, true));
             // The rest (media, files, contacts, ...) are noted by the providers when the app
             // actually reads; those only prompt while the app is in front (see onAttempt), so
             // a WeChat picker that finds an empty gallery gets the question, background
@@ -645,7 +894,7 @@ final class PrivacyGuard {
                     AppOpsManager.OP_READ_CALENDAR, AppOpsManager.OP_WRITE_CALENDAR,
                     AppOpsManager.OP_BODY_SENSORS, AppOpsManager.OP_ACTIVITY_RECOGNITION },
                     (op, uid, pkg, tag, flags, result) ->
-                            onAttempt(app, AppOpsManager.strOpToOp(op), pkg, result));
+                            onAttempt(app, AppOpsManager.strOpToOp(op), pkg, result, flags, false));
             sWatching = true;
         } catch (Throwable t) {
             Log.e(TAG, "cannot watch app-ops; guard still applies, no notifications", t);
@@ -689,10 +938,35 @@ final class PrivacyGuard {
         }
     }
 
-    private static void onAttempt(Context ctx, int op, String pkg, int result) {
+    private static void onAttempt(Context ctx, int op, String pkg, int result, int flags, boolean started) {
         if (result != AppOpsManager.MODE_IGNORED || pkg == null || !enabled()) return;
         final int bit = bitForOp(op);
         if (bit == 0 || (maskOf(ctx, pkg) & bit) == 0 || allowedUntil(ctx, pkg, bit) != 0) return;
+        if (isSensorBit(bit)) {
+            Log.i(TAG, "attempt " + pkg + " " + permWord(bit) + (started ? " started" : " noted")
+                    + " flags=0x" + Integer.toHexString(flags));
+        }
+        if (justReguarded(pkg)) return;                    // the app re-checking after our mode flip
+        // A permission probe: apps audit all their permissions on launch/resume with a self
+        // noteOp (YouTube: location + mic + camera inside 0.6 s), none of it a use. Real camera
+        // and mic use arrives *started* from cameraserver/audioserver, or noted on the app's
+        // behalf by a proxy (OP_FLAG_*_PROXIED); a lone self-noted location is a real (blocked)
+        // request. Hold self-noted sensor ops briefly and drop the burst when two different ones
+        // land together. Calls are decided first (a call's mic and camera may land together).
+        if (isSensorBit(bit) && !started && (flags & (AppOpsManager.OP_FLAG_TRUSTED_PROXIED
+                | AppOpsManager.OP_FLAG_UNTRUSTED_PROXIED)) == 0) {
+            synchronized (sNoted) {
+                long[] ts = sNoted.get(pkg);
+                if (ts == null) sNoted.put(pkg, ts = new long[3]);
+                ts[sensorIndex(bit)] = SystemClock.elapsedRealtime();
+            }
+            sHandler.postDelayed(() -> {
+                if (callAllowApplies(ctx, pkg, bit)) { decideCallAttempt(ctx, pkg, bit); return; }
+                if (isProbeBurst(pkg)) { Log.i(TAG, "permission probe, quiet: " + pkg + " " + permWord(bit)); return; }
+                notifyBlocked(ctx, pkg, bit);
+            }, PROBE_WINDOW_MS);
+            return;
+        }
         // Camera / mic / location are worth a heads-up from the background (a hidden recorder is
         // the point of the guard). Everything else is noted constantly by background syncs and
         // libraries -- only ask when the app is on screen, i.e. the user just tried something.
@@ -706,47 +980,116 @@ final class PrivacyGuard {
             sHandler.post(() -> allowFor(ctx, pkg, bit, auto));
             return;
         }
-        if (muted(ctx, pkg)) return;
+        if (callAllowApplies(ctx, pkg, bit)) {
+            // Decide after the call signals have had a moment to appear (the call notification
+            // and the VOICE_COMMUNICATION record client follow the app-op by a few hundred ms).
+            sHandler.postDelayed(() -> decideCallAttempt(ctx, pkg, bit), CALL_DECIDE_DELAY_MS);
+            return;
+        }
         sHandler.post(() -> notifyBlocked(ctx, pkg, bit));
     }
 
-    private static void notifyBlocked(Context ctx, String pkg, int bit) {
-        final long now = SystemClock.elapsedRealtime();
-        final long gap = (bit == LOCATION) ? NOTIFY_GAP_LOCATION_MS
-                : isSensorBit(bit) ? NOTIFY_GAP_MS : NOTIFY_GAP_QUIET_MS;
-        final String throttleKey = pkg + ":" + bit;
-        final Long last = sLastNotified.get(throttleKey);
-        if (last != null && now - last < gap) return;
-        sLastNotified.put(throttleKey, now);
+    /** elapsedRealtime of the last *noted* camera / mic / location op per package. */
+    private static final ArrayMap<String, long[]> sNoted = new ArrayMap<>();
+    private static final long PROBE_WINDOW_MS = 1200;
 
+    private static int sensorIndex(int bit) { return bit == CAMERA ? 0 : bit == MIC ? 1 : 2; }
+
+    private static boolean isProbeBurst(String pkg) {
+        final long now = SystemClock.elapsedRealtime();
+        int n = 0;
+        synchronized (sNoted) {
+            final long[] ts = sNoted.get(pkg);
+            if (ts == null) return false;
+            for (long t : ts) if (t != 0 && now - t <= 2 * PROBE_WINDOW_MS) n++;
+        }
+        return n >= 2;
+    }
+
+    /** Times a background "blocked" heads-up for pkg:bit went unanswered (for the back-off). */
+    private static final ArrayMap<String, Integer> sIgnored = new ArrayMap<>();
+
+    /** Foreground prompt de-dupe: the app on screen re-tries the op every few hundred ms while
+     *  our dialog is up; one launch per pkg:bit per 3 s is plenty (the prompt merges the rest). */
+    private static final long PROMPT_GAP_MS = 3000L;
+    private static final ArrayMap<String, Long> sLastPrompted = new ArrayMap<>();
+
+    private static void notifyBlocked(Context ctx, String pkg, int bit) {
+        // "Always block" = the per-app mute: never ask again for this app, on screen or not.
+        // (Tried "mute = background heads-ups only" on 2026-09-19 so a muted WhatsApp could still
+        // prompt for a share-location tap: YouTube / Instagram then prompted on every launch
+        // probe despite Always block -- a launch probe and a user tap look the same to an app-op
+        // watcher. The per-screen quiet rule below is the finer tool; un-mute the app to get
+        // prompts back.)
+        if (muted(ctx, pkg)) return;
+        final long now = SystemClock.elapsedRealtime();
+        final String throttleKey = pkg + ":" + bit;
         final String what = permWord(bit);
-        final String sees = bit == CAMERA ? "a disabled camera." : bit == MIC ? "silence."
-                : bit == LOCATION ? "no fix." : bit == MEDIA_VISUAL ? "an empty gallery."
-                : bit == FILES ? "no files." : bit == CONTACTS ? "no contacts." : "nothing.";
-        final String label = label(ctx, pkg);
-        Log.i(TAG, "blocked " + pkg + " " + what);
 
         // The app is the one on screen: ask in the middle of it (PrivacyPromptActivity, dialog
-        // over the app) instead of a heads-up. Background attempts keep the heads-up.
-        // A second permission a moment later (video call = mic then camera) finds our own dialog
-        // on top: still the app's turn, and the prompt merges it into the one already showing.
+        // over the app) instead of a heads-up, and BEFORE the heads-up throttle below -- that
+        // throttle is stretched by the back-off, and a voice note the user is holding the button
+        // for must never be swallowed because the same app poked the mic from the background an
+        // hour ago (WhatsApp voice notes, 2026-09-18). A second permission a moment later (video
+        // call = mic then camera) finds our own dialog on top: still the app's turn, and the
+        // prompt merges it into the one already showing.
         final ComponentName top = sTop;
         String cls = null;
         if (top != null && top.getPackageName().equals(pkg)) cls = top.getClassName();
         else if (pkg.equals(sPromptPkg)) cls = sPromptCls;
         if (cls != null) {
+            if (autoAllowMs(ctx, pkg, cls, bit) == SCREEN_BLOCK) {   // "always block on this screen"
+                Log.i(TAG, "screen block rule: quiet " + pkg + "/" + cls + " " + what);
+                return;
+            }
+            final Long lastPrompt = sLastPrompted.get(throttleKey);
+            if (lastPrompt != null && now - lastPrompt < PROMPT_GAP_MS) return;
             try {
                 ctx.startActivity(new Intent(ctx, PrivacyPromptActivity.class)
                         .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION)
                         .putExtra(EXTRA_PKG, pkg).putExtra(EXTRA_BIT, bit)
                         .putExtra(EXTRA_CLS, cls));
+                Log.i(TAG, "blocked " + pkg + " " + what + " (foreground prompt)");
                 sPromptPkg = pkg;
                 sPromptCls = cls;
+                sLastPrompted.put(throttleKey, now);
+                sLastNotified.put(throttleKey, now);
+                synchronized (sIgnored) { sIgnored.remove(throttleKey); }   // the app is in front again
                 return;
             } catch (Exception e) {
                 Log.w(TAG, "foreground prompt unavailable, falling back to the heads-up: " + e);
             }
         }
+
+        long gap = (bit == LOCATION) ? NOTIFY_GAP_LOCATION_MS
+                : isSensorBit(bit) ? NOTIFY_GAP_MS : NOTIFY_GAP_QUIET_MS;
+        // Back-off: each ignored background heads-up for this app + permission stretches the
+        // next gap 5x (1 min -> 5 -> 25 -> ~2 h -> 6 h cap). Google's hotword/location polling
+        // would otherwise nag once a minute forever. Reset by an answer or the app coming to the
+        // front (the dialog path above), so a real user action is never delayed by earlier noise.
+        if (backoff()) {
+            final Integer n;
+            synchronized (sIgnored) { n = sIgnored.get(throttleKey); }
+            for (int i = 0; n != null && i < n && gap < NOTIFY_GAP_LOCATION_MS; i++) gap *= 5;
+            gap = Math.min(gap, NOTIFY_GAP_LOCATION_MS);
+        }
+        final Long last = sLastNotified.get(throttleKey);
+        if (last != null && now - last < gap) return;
+        // Location, contacts, photos, files... while the app is in a call (its call screen probes
+        // them all as it opens): still blocked, but silently -- a dialog on top of a call is the
+        // last thing anyone wants, and the app can ask again after it. (Past the throttle, so
+        // this costs one service walk per 5 min per permission at most.)
+        if (bit != MIC && bit != CAMERA && callAware() && CallDetect.of(ctx, pkg) != CallDetect.NONE) {
+            Log.i(TAG, "during call blocked quietly: " + pkg + " " + permWord(bit));
+            return;
+        }
+        sLastNotified.put(throttleKey, now);
+
+        final String sees = bit == CAMERA ? "a disabled camera." : bit == MIC ? "silence."
+                : bit == LOCATION ? "no fix." : bit == MEDIA_VISUAL ? "an empty gallery."
+                : bit == FILES ? "no files." : bit == CONTACTS ? "no contacts." : "nothing.";
+        final String label = label(ctx, pkg);
+        Log.i(TAG, "blocked " + pkg + " " + what);
 
         final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         nm.createNotificationChannel(askChannel());
@@ -762,16 +1105,16 @@ final class PrivacyGuard {
         final Notification.Builder nb = new Notification.Builder(ctx, CHANNEL_ASK)
                 .setSmallIcon(R.drawable.ic_privacy)
                 .setContentTitle(permGlyph(bit) + " " + label + " tried to use the " + what)
-                .setContentText("Blocked by Privacy guard. The app sees " + sees)
-                .setStyle(new Notification.BigTextStyle().bigText("Blocked by Privacy guard; "
-                        + label + " still thinks it has permission. Allow just its " + what
-                        + " for a few minutes if you need it right now, or change its rules in "
-                        + "RedMagic Control."))
+                .setContentText("Blocked; it sees " + sees)
+                .setStyle(new Notification.BigTextStyle().bigText("Blocked; it sees " + sees
+                        + " Allow its " + what + " for a few minutes, or Always block to stop asking."))
                 .setContentIntent(open)
                 .setAutoCancel(true);
         // No setOnlyAlertOnce: the 60 s throttle above already limits repeats, and a fresh block
         // after that should pop the heads-up again rather than silently refresh the shade entry.
-        // Per-permission, per-duration allow actions (5 / 10 / 15 min) for THIS permission only.
+        // Per-permission, per-duration allow actions (5 / 10 min) for THIS permission only,
+        // then "Always block" (mute this app's alerts; the guard itself never changes). Short labels:
+        // the action row shrinks the widest buttons first, so "5 min" / "10 min" keep the third whole.
         for (long ms : ALLOW_CHOICES_MS) {
             final int mins = (int) (ms / 60000);
             final PendingIntent allow = PendingIntent.getBroadcast(ctx,
@@ -779,9 +1122,21 @@ final class PrivacyGuard {
                     new Intent(ACTION_ALLOW).setClass(ctx, PrivacyGuardReceiver.class)
                             .putExtra(EXTRA_PKG, pkg).putExtra(EXTRA_BIT, bit).putExtra(EXTRA_MS, ms),
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            nb.addAction(new Notification.Action.Builder(null, "Allow " + mins + " min", allow).build());
+            nb.addAction(new Notification.Action.Builder(null, mins + " min", allow).build());
         }
+        nb.addAction(new Notification.Action.Builder(null, "Always block", muteIntent(ctx, pkg)).build());
         nm.notify(pkg, 0, nb.build());
+        synchronized (sIgnored) {                          // counts as ignored until answered
+            final Integer n = sIgnored.get(throttleKey);
+            sIgnored.put(throttleKey, n == null ? 1 : n + 1);
+        }
+    }
+
+    /** "Always block": mute this app's blocked alerts (PrivacyGuardReceiver -> setMuted). */
+    private static PendingIntent muteIntent(Context ctx, String pkg) {
+        return PendingIntent.getBroadcast(ctx, (pkg + ":mute").hashCode(),
+                new Intent(ACTION_MUTE).setClass(ctx, PrivacyGuardReceiver.class).putExtra(EXTRA_PKG, pkg),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     private static NotificationChannel askChannel() {
@@ -804,7 +1159,7 @@ final class PrivacyGuard {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    /** Ongoing "X has <perm> — m:ss left" notification with Extend +5/+10/+15 while an allowance runs. */
+    /** Ongoing "X has <perm> — m:ss left" notification with Extend +5/+10 while an allowance runs. */
     private static void notifyAllowed(Context ctx, String pkg, int bit) {
         final long until = prefs(ctx).getLong(untilKey(pkg, bit), 0);
         if (until <= System.currentTimeMillis()) return;
@@ -830,12 +1185,12 @@ final class PrivacyGuard {
                     new Intent(ACTION_EXTEND).setClass(ctx, PrivacyGuardReceiver.class)
                             .putExtra(EXTRA_PKG, pkg).putExtra(EXTRA_BIT, bit).putExtra(EXTRA_MS, ms),
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            nb.addAction(new Notification.Action.Builder(null, "Extend " + mins + " min", ext).build());
+            nb.addAction(new Notification.Action.Builder(null, "+" + mins + " min", ext).build());
         }
         nm.notify(pkg, bit, nb.build());
     }
 
-    /** When an allowance ends: offer to renew with the same 5/10/15 buttons (the "re-prompt on expiry"). */
+    /** When an allowance ends: offer to renew with the same 5/10 buttons, or Always block (the "re-prompt on expiry"). */
     private static void notifyExpiredPrompt(Context ctx, String pkg, int bit) {
         final String what = permWord(bit);
         final String label = label(ctx, pkg);
@@ -844,7 +1199,7 @@ final class PrivacyGuard {
         final Notification.Builder nb = new Notification.Builder(ctx, CHANNEL_ASK)
                 .setSmallIcon(R.drawable.ic_privacy)
                 .setContentTitle(permGlyph(bit) + " " + label + "’s " + what + " access ended")
-                .setContentText("Guarded again. Allow more time if you still need it.")
+                .setContentText("Guarded again. Allow more, or Always block to stop asking.")
                 .setContentIntent(editorIntent(ctx, pkg))
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true);
@@ -855,8 +1210,9 @@ final class PrivacyGuard {
                     new Intent(ACTION_ALLOW).setClass(ctx, PrivacyGuardReceiver.class)
                             .putExtra(EXTRA_PKG, pkg).putExtra(EXTRA_BIT, bit).putExtra(EXTRA_MS, ms),
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            nb.addAction(new Notification.Action.Builder(null, "Allow " + mins + " min", allow).build());
+            nb.addAction(new Notification.Action.Builder(null, mins + " min", allow).build());
         }
+        nb.addAction(new Notification.Action.Builder(null, "Always block", muteIntent(ctx, pkg)).build());
         nm.notify(pkg, bit, nb.build());
     }
 
