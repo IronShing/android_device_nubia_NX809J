@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GApps-only framework overrides (Minimal + Full; microG builds skip this dir). -->
+<resources>
+    <!-- XDA #193/#209/#225: Google Maps / Waze mic hears nothing on Minimal. They use the
+         on-device recognizer (Speech Recognition & Synthesis, com.google.android.tts). A
+         RecognitionService is bound with BIND_INCLUDE_CAPABILITIES|BIND_FOREGROUND_SERVICE
+         only when it is the default, the on-device recognizer, or preinstalled
+         (SpeechRecognitionManagerServiceImpl.checkPrivilege); the Play-installed package is
+         none of those on Minimal, so it records from the background and gets silence.
+         Naming it here is what Pixel's config does; harmless when it is not installed. -->
+    <string name="config_defaultOnDeviceSpeechRecognitionService" translatable="false">com.google.android.tts/com.google.android.apps.speech.tts.googletts.service.GoogleTTSRecognitionService</string>
+</resources>

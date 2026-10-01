@@ -1,0 +1,8 @@
+# RIGHT shoulder trigger (Awinic SAR sensor, channel 0).
+# The sensor emits KEY_F7 (65). Left on Generic.kl that reaches the foreground app
+# as KEYCODE_F7, which Chromium browsers (Brave/Chrome/Edge) treat as the
+# "Turn on caret browsing?" hotkey. Report it as a gamepad bumper instead: no app
+# has a default action for BUTTON_R1 but it is still delivered, so trigger_map,
+# ButtonMapper-style remappers and in-game key binding keep working.
+key 65    BUTTON_R1
+key 59    F1

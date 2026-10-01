@@ -8,5 +8,5 @@ PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/evolution_NX809J.mk
 
 COMMON_LUNCH_CHOICES := \
-    evolution_NX809J-bp4a-userdebug \
-    evolution_NX809J-bp4a-eng
+    evolution_NX809J-cp2a-userdebug \
+    evolution_NX809J-cp2a-eng

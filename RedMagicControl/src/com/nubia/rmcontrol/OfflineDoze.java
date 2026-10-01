@@ -23,6 +23,18 @@ import android.util.Log;
  * Expect a small win. The wake this addresses (68 pm8xxx_rtc_alarm, ~every 10 min) costs
  * roughly 393 ms of CPU per wake; measured discharge was 0.00-0.14 %/hr either way. This
  * mostly stops the phone waking for work it provably cannot do.
+ *
+ * Two parts, both applied only while offline:
+ * 1. device_idle_constants: light_idle_to / light_max_idle_to (light Doze) and idle_to /
+ *    max_idle_to (deep Doze) are stretched so the maintenance windows come less often. The
+ *    maintenance-window LENGTH (idle_pending_to) is left stock — stretching that keeps the
+ *    phone awake longer, which is what the first version of this feature did by mistake.
+ * 2. rm_alarm_offline_idle_hold (Settings.Global, read by our AlarmManagerService patch): the
+ *    ~10-minute wakes XDA #221 measured in deep Doze do not come from the Doze windows at all
+ *    but from alarms Doze never defers — GMS is on the power-save allowlist, so every
+ *    gms_scheduler / GCM alarm is "allow while idle, unrestricted"; WhatsApp/WeChat use
+ *    setAndAllowWhileIdle with a 72-per-hour quota. With the hold on, alarms from non-core
+ *    uids wait for the next maintenance window; alarm clocks, SystemUI and system uids do not.
  */
 final class OfflineDoze {
 
@@ -30,6 +42,8 @@ final class OfflineDoze {
 
     /** Settings.Global key parsed by DeviceIdleController.Constants. Applies with no reboot. */
     private static final String SETTING = "device_idle_constants";
+    /** Settings.Global switch observed by AlarmManagerService (framework patch). */
+    private static final String SETTING_ALARM_HOLD = "rm_alarm_offline_idle_hold";
 
     static final String KEY_ENABLED = "persist.sys.rm.doze_offline";
     /**
@@ -44,15 +58,15 @@ final class OfflineDoze {
     // User-tunable windows, in minutes (see SettingsActivity -> Battery).
     static final String KEY_LIGHT_IDLE   = "persist.sys.rm.doze_light_idle_min";
     static final String KEY_LIGHT_MAX    = "persist.sys.rm.doze_light_max_min";
-    static final String KEY_IDLE_PENDING = "persist.sys.rm.doze_idle_pending_min";
-    static final String KEY_MAX_PENDING  = "persist.sys.rm.doze_max_pending_min";
+    static final String KEY_IDLE         = "persist.sys.rm.doze_idle_min";
+    static final String KEY_MAX_IDLE     = "persist.sys.rm.doze_max_idle_min";
 
-    // Stock AOSP for reference: light_idle_to=5, light_max_idle_to=30,
-    // idle_pending_to=5, max_idle_pending_to=10.
-    static final int DEF_LIGHT_IDLE   = 15;
-    static final int DEF_LIGHT_MAX    = 60;
-    static final int DEF_IDLE_PENDING = 15;
-    static final int DEF_MAX_PENDING  = 30;
+    // Stock AOSP for reference: light_idle_to=5, light_max_idle_to=15,
+    // idle_to=60, max_idle_to=360 (each window doubles up to the maximum).
+    static final int DEF_LIGHT_IDLE = 15;
+    static final int DEF_LIGHT_MAX  = 60;
+    static final int DEF_IDLE       = 120;
+    static final int DEF_MAX_IDLE   = 720;
 
     static boolean isOffline(Context ctx) {
         final ConnectivityManager cm = ctx.getSystemService(ConnectivityManager.class);
@@ -79,6 +93,7 @@ final class OfflineDoze {
         final String value = stretch ? build() : "";
         try {
             Settings.Global.putString(ctx.getContentResolver(), SETTING, value);
+            Settings.Global.putInt(ctx.getContentResolver(), SETTING_ALARM_HOLD, stretch ? 1 : 0);
             Prop.set(KEY_APPLIED, stretch ? "1" : "0");
             Log.i(TAG, "offline-doze " + (stretch ? "applied " + value : "cleared (network present)"));
         } catch (Throwable t) {
@@ -89,8 +104,8 @@ final class OfflineDoze {
     private static String build() {
         return "light_idle_to=" + ms(KEY_LIGHT_IDLE, DEF_LIGHT_IDLE)
                 + ",light_max_idle_to=" + ms(KEY_LIGHT_MAX, DEF_LIGHT_MAX)
-                + ",idle_pending_to=" + ms(KEY_IDLE_PENDING, DEF_IDLE_PENDING)
-                + ",max_idle_pending_to=" + ms(KEY_MAX_PENDING, DEF_MAX_PENDING);
+                + ",idle_to=" + ms(KEY_IDLE, DEF_IDLE)
+                + ",max_idle_to=" + ms(KEY_MAX_IDLE, DEF_MAX_IDLE);
     }
 
     static int minutes(String key, int def) {

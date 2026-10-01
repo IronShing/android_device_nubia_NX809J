@@ -5,10 +5,10 @@
 
 on boot
     # Shoulder triggers (Awinic SAR capacitive sensors)
-    # Left trigger: /dev/input/event4 (KEYCODE_F7)
-    # Right trigger: /dev/input/event5 (KEYCODE_F8)
-    write /sys/class/leds/sar0/mode_operation 1
-    write /sys/class/leds/sar1/mode_operation 1
+    # sar0 = RIGHT trigger (KEY_F7 -> BUTTON_R1), sar1 = LEFT (KEY_F8 -> BUTTON_L1).
+    # On/off lives in hwlevels/redmagic_hw_arm.rc (persist.sys.rm.trigger_*);
+    # mode_operation 1 here was a no-op (low-power scan still reports, and
+    # the driver re-arms after its firmware load anyway).
     chown system system /sys/class/leds/sar0/mode_operation
     chown system system /sys/class/leds/sar1/mode_operation
     chown system system /sys/class/leds/sar0/baseline
@@ -56,16 +56,18 @@ on boot
 
     # Battery charging control — let the LineageOS health HAL (runs as user
     # system) write the qcom-battery charge enable/disable node, so
-    # Settings > Battery > Charging control can actually cap charging. The node
-    # is root-owned (-rw-r--r--) by default, so the HAL's write silently fails
+    # Settings > Battery > Charging control can actually cap charging. The nodes
+    # are root-owned (-rw-r--r--) by default, so the HAL's write silently fails
     # (the framework reports the limit set, but charging never stops) without
-    # this chown. The HAL is wired to charging_enabled (see device.mk soong cfg).
+    # this chown. The HAL is wired to battery_charging_enabled (charger-only stop,
+    # phone keeps running off the adapter = bypass) — see device.mk; charging_enabled
+    # (input suspend, drains on USB) is chowned too so it stays reachable for tests.
     chown system system /sys/class/qcom-battery/charging_enabled
     chmod 0664 /sys/class/qcom-battery/charging_enabled
-    # NOTE: the relabel of this node to the plat type sysfs_batt_charge_control
-    # is NOT done here — this .rc installs to /odm and runs in vendor_init, which
-    # cannot relabel TO a plat type. It is done from the health HAL's system_ext
-    # .rc (init domain). See vendor.lineage.health-service.default.rc.
+    # NOTE: the relabel of battery_charging_enabled to the plat type
+    # sysfs_batt_charge_control is NOT done here — this .rc installs to /odm and
+    # runs in vendor_init, which cannot relabel TO a plat type. It is done from the
+    # health HAL's system_ext .rc (init domain). See vendor.lineage.health-service.default.rc.
     chown system system /sys/class/qcom-battery/battery_charging_enabled
     chmod 0664 /sys/class/qcom-battery/battery_charging_enabled
 

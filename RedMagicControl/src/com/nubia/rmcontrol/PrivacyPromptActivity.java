@@ -150,13 +150,12 @@ public class PrivacyPromptActivity extends Activity {
                 .setNegativeButton("Keep blocked", null)
                 .setNeutralButton("Always block", (d, w) -> {
                     // Box ticked: quiet-block rule for this screen only (the app stays unmuted
-                    // elsewhere). Otherwise the per-app alert mute as before.
-                    if (cls != null && alwaysBlock.isChecked()) {
-                        for (int b = 1; b != 0 && b <= bits; b <<= 1) {
-                            if ((bits & b) != 0) PrivacyGuard.setAutoAllow(this, pkg, cls, b, PrivacyGuard.SCREEN_BLOCK);
-                        }
-                    } else {
-                        PrivacyGuard.setMuted(this, pkg, true);
+                    // elsewhere). Otherwise mute just the asked-for permission(s) of this app --
+                    // its other guarded permissions keep prompting.
+                    for (int b = 1; b != 0 && b <= bits; b <<= 1) {
+                        if ((bits & b) == 0) continue;
+                        if (cls != null && alwaysBlock.isChecked()) PrivacyGuard.setAutoAllow(this, pkg, cls, b, PrivacyGuard.SCREEN_BLOCK);
+                        else PrivacyGuard.setMuted(this, pkg, b, true);
                     }
                 })
                 .setOnDismissListener(d -> finish())

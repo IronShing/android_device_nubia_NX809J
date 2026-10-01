@@ -58,14 +58,35 @@ on property:persist.sys.cooling.level=1
     write /proc/driver/micropump/speed 90
 
 # ---- Shoulder triggers (SAR capacitive) ----
-on property:persist.sys.rm.trigger_left=1
-    write /sys/class/leds/sar0/mode_operation 1
+# aw9620x mode_operation (from the vendor aw9620x.ko, 2026-09-27): 0 = no-op
+# (only records the number), 1 = low-power scan (REG_WST 0x1000000, STILL
+# reports KEY_F7/F8), 2 = active (0x3000000, what aw9620x_en_active sets after
+# the firmware load), 3 = stopped (REG_WST 0x0, no events). The stock rc's
+# "1 = off" never silenced anything. sar0 (i2c 9-0013) is the RIGHT trigger
+# (F7 -> BUTTON_R1), sar1 (20-0012) the LEFT (F8 -> BUTTON_L1).
+#
+# The triggers are live ONLY while a GameSpace-listed game is in front
+# (persist.sys.power_mode_perf=1, set/cleared by GameSpace): outside games
+# BUTTON_R1/L1 leak into whatever is focused (Chromium pages history
+# back/forward on them). Each side's persist switch gates it on top.
+on property:persist.sys.power_mode_perf=1 && property:persist.sys.rm.trigger_left=1
+    write /sys/class/leds/sar1/mode_operation 2
+on property:persist.sys.power_mode_perf=1 && property:persist.sys.rm.trigger_right=1
+    write /sys/class/leds/sar0/mode_operation 2
+on property:persist.sys.power_mode_perf=0
+    write /sys/class/leds/sar1/mode_operation 3
+    write /sys/class/leds/sar0/mode_operation 3
 on property:persist.sys.rm.trigger_left=0
-    write /sys/class/leds/sar0/mode_operation 0
-on property:persist.sys.rm.trigger_right=1
-    write /sys/class/leds/sar1/mode_operation 1
+    write /sys/class/leds/sar1/mode_operation 3
 on property:persist.sys.rm.trigger_right=0
-    write /sys/class/leds/sar1/mode_operation 0
+    write /sys/class/leds/sar0/mode_operation 3
+# The rules above fire at ~3.6 s, but the firmware load finishes ~3 s later
+# and aw9620x_en_active re-arms both chips; no game is in front this early,
+# so stop them again once the boot is done (power_mode_perf is normalised to
+# 0 at boot anyway, but a value that does not CHANGE fires no trigger).
+on property:sys.boot_completed=1
+    write /sys/class/leds/sar1/mode_operation 3
+    write /sys/class/leds/sar0/mode_operation 3
 
 # ---- Edge-touch rejection (anti-grip); off = full-edge for back gesture ----
 on property:persist.sys.rm.edge_reject=1
@@ -278,3 +299,33 @@ on property:persist.sys.rm.chargecool.active=0
 
 on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=0
     write /sys/kernel/fan/fan_enable 0
+
+# Charge separation (XDA #189). RedMagic Control publishes the EFFECTIVE state
+# (manual tile OR "during game mode" while persist.sys.power_mode_perf=1, minus its
+# own screen-off / low-battery auto-off) as persist.sys.rm.chargesep.active; this is
+# the only writer of the node from that path. battery_charging_enabled=0 stops only
+# the battery charger: the USB input stays up, the phone runs off the adapter and the
+# battery sits at 0 A (verified 4 A -> 0 A in 15 s, status stays Charging). It is the
+# node the stock ChargeSeparation app flips. NOT charging_enabled -- that suspends the
+# input path and the phone drains while plugged. The Lineage health HAL shares this
+# node and reads the prop so its limit logic never re-enables the charger under us.
+# The prop persists, so a reboot with it set re-applies the hold from post-fs-data
+# for a few seconds; the app drops the manual switch at boot (stock parity: separation
+# is a session thing) and re-publishes the effective state as soon as it starts.
+on property:persist.sys.rm.chargesep.active=1
+    write /sys/class/qcom-battery/battery_charging_enabled 0
+
+on property:persist.sys.rm.chargesep.active=0
+    write /sys/class/qcom-battery/battery_charging_enabled 1
+# The charger driver turns the battery charger back on at every attach, and
+# init only acts when .active CHANGES, so a replug mid-session charged behind
+# a tile that still read On (XDA #227/#230). The app bumps this on attach.
+on property:sys.rm.chargesep.reapply=* && property:persist.sys.rm.chargesep.active=1
+    write /sys/class/qcom-battery/battery_charging_enabled 0
+# ...but not straight away: the ADSP charger only negotiates the 9/18 V contract while it
+# is allowed to charge, and with the battery cut at attach it sits on 5 V / 2.25 A (11 W)
+# for the whole session (XDA #241). The app bumps this on attach, waits
+# persist.sys.rm.chargesep.grace_ms (default 8 s), then bumps reapply; the negotiated
+# contract survives the bypass (Bobo9996 log: 9 V held after re-engage).
+on property:sys.rm.chargesep.allow=*
+    write /sys/class/qcom-battery/battery_charging_enabled 1

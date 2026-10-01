@@ -25,7 +25,9 @@ public class PrivacyGuardReceiver extends BroadcastReceiver {
             if (pkg != null && bit != 0) PrivacyGuard.onAllowExpired(ctx, pkg, bit);
         } else if (PrivacyGuard.ACTION_MUTE.equals(action)) {
             final String pkg = intent.getStringExtra(PrivacyGuard.EXTRA_PKG);
-            if (pkg != null) PrivacyGuard.setMuted(ctx, pkg, true);
+            final int bit = intent.getIntExtra(PrivacyGuard.EXTRA_BIT, 0);
+            if (pkg != null && bit != 0) PrivacyGuard.setMuted(ctx, pkg, bit, true);
+            else if (pkg != null) PrivacyGuard.setMuted(ctx, pkg, true);   // pre-0921 pending intent
         } else if (PrivacyGuard.ACTION_END_CALL_ALLOW.equals(action)) {
             final String pkg = intent.getStringExtra(PrivacyGuard.EXTRA_PKG);
             if (pkg != null) PrivacyGuard.endCallAllows(ctx, pkg);

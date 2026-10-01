@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Plat-private sysfs type for the charge-limiter control node
-# /sys/class/qcom-battery/charging_enabled. The stock vendor policy genfs-labels
+# /sys/class/qcom-battery/battery_charging_enabled. The stock vendor policy genfs-labels
 # it sysfs_healthd (a bare vendor type that a coredomain can neither name nor
 # write), so the system_ext lineage health HAL — hal_lineage_health_default, a
 # coredomain — cannot be granted access to it directly (unknown-type build
@@ -22,7 +22,7 @@ type sysfs_batt_charge_control, fs_type, sysfs_type;
 # sysfs_type, so the attribute covers it. A blanket sysfs_type relabelfrom trips
 # domain.te's "restrict write access to etm sysfs interface" neverallow
 # (sysfs_devices_cs_etm:no_w_file_perms, with init NOT excepted), so we subtract
-# that protected type. init only ever relabels charging_enabled (the sole
+# that protected type. init only ever relabels battery_charging_enabled (the sole
 # more-specific system_ext file_contexts entry), so the unused breadth is moot.
 allow init sysfs_batt_charge_control:file relabelto;
 allow init { sysfs_type -sysfs_devices_cs_etm }:file relabelfrom;

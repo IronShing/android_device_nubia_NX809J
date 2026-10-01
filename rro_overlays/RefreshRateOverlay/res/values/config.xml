@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the stock vendor RRO's 120 / 240 (see Android.bp). Peak = default =
+     the panel's real maximum, so the DisplayModeDirector default vote is 144 and
+     "Smooth display" has nothing left to raise; the user can still lower it via
+     Settings > Display > Refresh rate. -->
+<resources>
+    <integer name="config_defaultPeakRefreshRate">144</integer>
+    <integer name="config_defaultRefreshRate">144</integer>
+</resources>

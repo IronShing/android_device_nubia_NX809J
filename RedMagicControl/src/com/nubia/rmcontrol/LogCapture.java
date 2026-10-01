@@ -2,7 +2,8 @@
  * SPDX-License-Identifier: Apache-2.0
  * Power-menu "Capture log": SystemUI's CaptureLogAction (GlobalActionsDialogLite) broadcasts
  * com.nubia.rmcontrol.CAPTURE_LOG once the power menu has closed; we dump every logcat buffer
- * plus a device header into Download/RMControl-logs/log_<stamp>.txt (MediaStore, so it shows
+ * plus a device header, getprop and the newest /data/anr traces (hung-process section) into
+ * Download/RMControl-logs/log_<stamp>.txt (MediaStore, so it shows
  * in Files) and post a "tap to share" notification. No adb, no root: uid system may read logd
  * without READ_LOGS. Secure rm_powermenu_log (default on) hides the menu item (SystemUI reads
  * it) and is the switch in our Settings; "Capture now" there calls capture() directly.
@@ -144,6 +145,8 @@ public class LogCapture {
                 w.flush();
                 size += run(os, "getprop");
                 w.flush();
+                size += appendAnrTraces(w);
+                w.flush();
             }
             pruneDir(dir);
 
@@ -202,6 +205,55 @@ public class LogCapture {
                 .setAutoCancel(true)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .build());
+    }
+
+    private static final int ANR_FILES = 3;
+    private static final long ANR_MAX_AGE_MS = 48L * 3600 * 1000;
+    private static final int ANR_MAX_CHARS = 400 * 1024;
+
+    /**
+     * The ANR dialog ("System UI isn't responding") leaves no stack in logcat — only the CPU
+     * table — so the trace file is the one thing that says what the main thread was doing.
+     * /data/anr is 0775 system and the traces are owned by system_server (uid system, same as
+     * us; system_app has anr_data_file read in sepolicy). Newest few from the last two days,
+     * trimmed to the hung process (the first "----- pid N" section; system_server dumps up to
+     * ~70 more pids after it) so the log stays shareable.
+     */
+    private static long appendAnrTraces(Writer w) throws Exception {
+        final File[] all = new File("/data/anr").listFiles();
+        if (all == null) {
+            w.write("\n=== /data/anr: not readable ===\n");
+            return 0;
+        }
+        final List<File> files = new ArrayList<>();
+        final long cutoff = System.currentTimeMillis() - ANR_MAX_AGE_MS;
+        for (File f : all) if (f.isFile() && f.lastModified() >= cutoff) files.add(f);
+        files.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        w.write("\n=== /data/anr (" + all.length + " files, newest " + Math.min(ANR_FILES, files.size())
+                + " of the last 48 h, hung process only) ===\n");
+        long total = 0;
+        for (int i = 0; i < files.size() && i < ANR_FILES; i++) {
+            final File f = files.get(i);
+            w.write("\n--- " + f.getName() + " (" + f.length() + " bytes, "
+                    + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date(f.lastModified()))
+                    + ") ---\n");
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(new FileInputStream(f), "UTF-8"))) {
+                String line;
+                int chars = 0;
+                while ((line = r.readLine()) != null) {
+                    w.write(line);
+                    w.write('\n');
+                    chars += line.length() + 1;
+                    if (line.startsWith("----- end ")) break;
+                    if (chars > ANR_MAX_CHARS) { w.write("[truncated]\n"); break; }
+                }
+                total += chars;
+            } catch (Throwable t) {
+                w.write("[unreadable: " + t + "]\n");
+            }
+        }
+        return total;
     }
 
     /** Runs a command, streams stdout+stderr into os, returns the byte count. */

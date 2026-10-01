@@ -322,6 +322,16 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     trigger_map
 
+# The SAR trigger nodes fall back to Generic.kl, which hands KEYCODE_F7/F8 to the
+# foreground app -- Chromium browsers treat F7 as the caret-browsing hotkey, so a
+# brush of the right trigger in Brave pops "Turn on caret browsing?". Per-device
+# keylayouts report the triggers as gamepad bumpers (BUTTON_R1/BUTTON_L1): still
+# delivered (trigger_map reads raw evdev, remappers/in-game binding keep working),
+# no default action anywhere.
+PRODUCT_COPY_FILES += \
+    $(LOCAL_PATH)/triggermap/keylayout/nubia_tgk_aw_sar0_ch0.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/nubia_tgk_aw_sar0_ch0.kl \
+    $(LOCAL_PATH)/triggermap/keylayout/nubia_tgk_aw_sar1_ch0.kl:$(TARGET_COPY_OUT_SYSTEM_EXT)/usr/keylayout/nubia_tgk_aw_sar1_ch0.kl
+
 # RKP toggle: init-domain property bridge. The RedMagic Control switch writes
 # persist.sys.rm.rkp and these actions do the remote_provisioning.* setprops, which the app
 # itself is neverallowed to do (property.te). See rkp/rkp.rc.
@@ -603,6 +613,13 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     Launcher3NoGestureHintOverlay
 
+# 144 Hz default refresh rate RRO (XDA #231, wake-up jitter). Our framework-res 144/144
+# overlay is a PRODUCT_PACKAGE_OVERLAYS bake and loses to the stock vendor RRO
+# /vendor/overlay/FrameworksResTarget_Vendor.apk (120/240); a system_ext static RRO is the
+# highest partition layer and wins. See rro_overlays/RefreshRateOverlay/Android.bp.
+PRODUCT_PACKAGES += \
+    NX809JRefreshRateOverlay
+
 # 16 KB page size check bypass for prebuilt libraries
 #
 # Android 16 (Baklava) introduced PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE which
@@ -644,22 +661,35 @@ PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := false
 PRODUCT_PACKAGES += \
     vendor.lineage.health-service.default
 
-$(call soong_config_set,lineage_health,charging_control_charging_path,/sys/class/qcom-battery/charging_enabled)
+# Node choice (2026-09-20, XDA #189 "charge separation"): the qcom-battery class has
+# TWO switches and they do different things:
+#   charging_enabled=0         suspends the USB INPUT path -> phone runs on the battery
+#                              and DISCHARGES while plugged (status DISCHARGING).
+#   battery_charging_enabled=0 keeps the input path up and only stops the battery
+#                              charger -> the phone runs off the adapter, battery current
+#                              4 A -> 0 A within 15 s, level holds, status stays CHARGING.
+#                              This is what the stock ChargeSeparation app flips
+#                              (services.jar ZteBatteryService$SettingsObserver).
+# The HAL advertises BYPASS (Android.bp default) and the framework's Toggle ccprovider
+# trusts that (margin 1 %, no battery-level polling), so it MUST be wired to the node
+# that really bypasses. With charging_enabled it cycled 79<->80 % draining on USB; with
+# battery_charging_enabled a limit is a true hold. The same node is the "Charge
+# separation" tile in RedMagic Control (persist.sys.rm.chargesep.active -> redmagic_hw_arm.rc);
+# the HAL honours that prop so the two never fight (see ChargingControl.cpp).
+$(call soong_config_set,lineage_health,charging_control_charging_path,/sys/class/qcom-battery/battery_charging_enabled)
 $(call soong_config_set,lineage_health,charging_control_charging_enabled,1)
 $(call soong_config_set,lineage_health,charging_control_charging_disabled,0)
 # Charge-limit % slider + enforcement. IMPORTANT: this device's charger FIRMWARE
 # IGNORES the kernel charge_control_{start,end}_threshold nodes (writable but cosmetic
 # — verified: battery 95%, end_threshold=70, even charge_control_en=1, still CHARGING).
 # So the HAL's threshold-based LIMIT mode does NOT work here. The only mechanism that
-# actually stops charging is the charging_enabled TOGGLE (verified: 0 -> status DISCHARGING).
-# Therefore: advertise TOGGLE only (supports_toggle). The framework's Toggle ccprovider
-# handles MODE_LIMIT by polling battery level and toggling charging_enabled around the
-# target % (Toggle.onBatteryChanged -> setChargingEnabled). The % slider still appears
-# because allowFineGrainedSettings() needs TOGGLE *or* LIMIT. When the limit holds,
-# status goes plugged+discharging -> SystemUI battery-defender (shield) engages.
+# actually stops charging is the enable TOGGLE above. Therefore: advertise TOGGLE only
+# (supports_toggle). The framework's Toggle ccprovider handles MODE_LIMIT by toggling the
+# node at the target % (Toggle.onBatteryChanged -> setChargingEnabled). The % slider still
+# appears because allowFineGrainedSettings() needs TOGGLE *or* LIMIT.
 # (supports_limit + threshold paths were tried and DROPPED: Limit ccprovider has priority
 # over Toggle but only writes the firmware-ignored thresholds -> slider showed but limit
-# never enforced + no shield.)
+# never enforced.)
 $(call soong_config_set_bool,lineage_health,charging_control_supports_toggle,true)
 
 # Deferred SELinux enforcing: flip to Enforcing at boot_completed (boots permissive
@@ -762,6 +792,13 @@ endif
 # evolution_NX809J.mk). Fermata Auto was shipped here 09-04..09-09 and dropped: its
 # MirrorDisplay rewrites Settings.System.accelerometer_rotation around every car mirror
 # session (never restores user_rotation), which is what kept re-enabling auto-rotate.
+# 2026-09-27 (XDA #193/#209/#225): GApps-only framework overlay -- names Google's Speech
+# Services as the on-device recognizer so Maps/Waze voice search works when the user installs
+# it from Play on Minimal (see overlay-gms/.../config.xml). Full ships GoogleTTS preinstalled.
+ifneq ($(NX809J_MICROG),true)
+PRODUCT_PACKAGE_OVERLAYS += $(LOCAL_PATH)/overlay-gms
+endif
+
 ifeq ($(NX809J_PERSONAL),true)
 ifneq ($(NX809J_MICROG),true)
 PRODUCT_PACKAGES += \

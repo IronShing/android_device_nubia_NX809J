@@ -1,0 +1,106 @@
+From 19e0cb4060d30c82858e908897a9b3cbd8b60ada Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Sat, 19 Sep 2026 23:19:24 +0300
+Subject: [PATCH] SecureElement: never block the main thread on a
+ declared-but-absent eSE terminal
+
+Terminal.initialize(true) called ServiceManager.waitForDeclaredService() on
+the main thread; on units whose declared eSE1 HAL exits at boot (all non-JP
+NX809J SKUs) that is a 20 s ANR loop that takes OMAPI for SIM1/SIM2 and
+OpenEUICC down with it. Probe the declared eSE with isDeclared() +
+non-blocking initialize(false) and retry in the background (15 x 4 s at boot)
+instead. JP units with a live eSE1 are served normally.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QRr3GvqD6vTkLFBCy38jby
+Change-Id: I06a14a2f91f1eccac1e8f54ad8c1da37b110e98a
+---
+ src/com/android/se/SecureElementService.java | 12 +++++++
+ src/com/android/se/Terminal.java             | 34 ++++++++++++++++----
+ 2 files changed, 40 insertions(+), 6 deletions(-)
+
+diff --git a/src/com/android/se/SecureElementService.java b/src/com/android/se/SecureElementService.java
+index 345bc9a..922a31d 100644
+--- a/src/com/android/se/SecureElementService.java
++++ b/src/com/android/se/SecureElementService.java
+@@ -257,6 +257,18 @@ public final class SecureElementService extends Service {
+                 Terminal terminal = new Terminal(name, this);
+ 
+                 Log.i(mTag, "Check if terminal " + name + " is available.");
++                // NX809J: eSE1 is declared in the odm VINTF on every variant, but only the JP
++                // (FeliCa) SKU has a working eSE -- elsewhere the Thales HAL exits at boot and
++                // never registers, and the blocking initialize(true) below would hang onCreate
++                // (20 s ANR loop, SIM1/SIM2 never served, OpenEUICC spins forever). Probe a
++                // declared eSE without blocking; the terminal keeps retrying in the background.
++                if (terminalName.equals(ESE_TERMINAL) && index == 1) {
++                    if (!terminal.initializeDeclaredNonBlocking()) {
++                        throw new NoSuchElementException("No HAL is declared for " + name);
++                    }
++                    mTerminals.put(name, terminal);
++                    continue;
++                }
+                 // Only retry on fail for the first terminal of each type.
+                 terminal.initialize(index == 1);
+                 mTerminals.put(name, terminal);
+diff --git a/src/com/android/se/Terminal.java b/src/com/android/se/Terminal.java
+index 93276ee..8bc6ec2 100644
+--- a/src/com/android/se/Terminal.java
++++ b/src/com/android/se/Terminal.java
+@@ -82,7 +82,10 @@ public class Terminal {
+     private static final int EVENT_GET_HAL = 1;
+     private static final int EVENT_NOTIFY_STATE_CHANGE = 2;
+ 
+-    private final int mMaxGetHalRetryCount = 5;
++    // NX809J: the eSE1 HAL (Thales/GTO, ST54 eSE) is declared on every variant but only the JP
++    // FeliCa SKU has a live eSE; give a declared HAL a minute to register at boot, then give up.
++    private static final int BOOT_GET_HAL_RETRIES = 15;
++    private int mMaxGetHalRetryCount = 5;
+     private int mGetHalRetryCount = 0;
+ 
+     private ISecureElement mSEHal;
+@@ -236,11 +239,9 @@ public class Terminal {
+             switch (message.what) {
+                 case EVENT_GET_HAL:
+                     try {
+-                        if (mName.startsWith(SecureElementService.ESE_TERMINAL)) {
+-                            initialize(true);
+-                        } else {
+-                            initialize(false);
+-                        }
++                        // Never block the main thread on waitForDeclaredService(): a declared
++                        // eSE whose HAL exited would hang the handler for good. Poll instead.
++                        initialize(false);
+                     } catch (Exception e) {
+                         Log.e(mTag, mName + " could not be initialized again");
+                         if (mGetHalRetryCount < mMaxGetHalRetryCount) {
+@@ -267,6 +268,27 @@ public class Terminal {
+         mTag = "SecureElement-Terminal-" + getName();
+     }
+ 
++    /**
++     * Non-blocking variant of {@link #initialize(boolean)} for a terminal that is VINTF-declared
++     * but whose HAL may never register (NX809J eSE1 outside the JP SKU exits at boot). Tries once
++     * now and otherwise keeps polling from the handler for a while, so onCreate never blocks and
++     * the SIM terminals stay usable. Returns false when the terminal isn't declared at all.
++     */
++    public boolean initializeDeclaredNonBlocking() {
++        final String name = "android.hardware.secure_element.ISecureElement/" + mName;
++        if (!ServiceManager.isDeclared(name)) return false;
++        try {
++            initialize(false);
++        } catch (Exception e) {
++            Log.w(mTag, mName + " is declared but its HAL is not up; retrying in the background");
++            mGetHalRetryCount = 0;
++            mMaxGetHalRetryCount = BOOT_GET_HAL_RETRIES;
++            mHandler.sendMessageDelayed(mHandler.obtainMessage(EVENT_GET_HAL, 0),
++                    GET_SERVICE_DELAY_MILLIS);
++        }
++        return true;
++    }
++
+     /**
+      * Initializes the terminal
+      *
+-- 
+2.55.0
+

@@ -1,0 +1,71 @@
+From 858637c52e60ef5c9a4c4f7b66e190965edec8e0 Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Thu, 1 Oct 2026 23:19:00 +0300
+Subject: [PATCH] Glimpse: do not crash when the shared URI's metadata cannot
+ be queried
+
+A SecurityException (no read grant / grant revoked) or a provider-side failure in
+the DISPLAY_NAME/SIZE query killed the viewer; losing the metadata is fine.
+
+Change-Id: Ifa642a4638400c5d182ccd231adedc181f75f10c
+---
+ .../glimpse/viewmodels/IntentsViewModel.kt    | 40 +++++++++++--------
+ 1 file changed, 24 insertions(+), 16 deletions(-)
+
+diff --git a/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt b/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt
+index b529e14..795e0da 100644
+--- a/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt
++++ b/app/src/main/java/org/lineageos/glimpse/viewmodels/IntentsViewModel.kt
+@@ -337,25 +337,33 @@ class IntentsViewModel(application: Application) : GlimpseViewModel(application)
+         var displayName: String? = null
+         var sizeBytes = 0L
+ 
+-        contentResolver.query(
+-            uri,
+-            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+-            null,
+-            null,
+-            null
+-        )?.use { cursor ->
+-            if (cursor.moveToFirst()) {
+-                val displayNameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+-                val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+-
+-                if (displayNameColumn != -1 && !cursor.isNull(displayNameColumn)) {
+-                    displayName = cursor.getString(displayNameColumn)
+-                }
++        // This can throw for a URI we were handed but cannot read: a SecurityException when the
++        // sender did not grant us read access (or the grant has already been revoked), or any
++        // provider-side failure. getType() above does not require a permission, so we only find
++        // out here. Losing the metadata is fine, crashing the viewer is not.
++        runCatching {
++            contentResolver.query(
++                uri,
++                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
++                null,
++                null,
++                null
++            )?.use { cursor ->
++                if (cursor.moveToFirst()) {
++                    val displayNameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
++                    val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
++
++                    if (displayNameColumn != -1 && !cursor.isNull(displayNameColumn)) {
++                        displayName = cursor.getString(displayNameColumn)
++                    }
+ 
+-                if (sizeColumn != -1 && !cursor.isNull(sizeColumn)) {
+-                    sizeBytes = cursor.getLong(sizeColumn)
++                    if (sizeColumn != -1 && !cursor.isNull(sizeColumn)) {
++                        sizeBytes = cursor.getLong(sizeColumn)
++                    }
+                 }
+             }
++        }.onFailure {
++            Log.w(LOG_TAG, "Cannot query metadata for uri $uri", it)
+         }
+ 
+         if (sizeBytes <= 0L) {
+-- 
+2.55.0
+

@@ -1,5 +1,14 @@
 # NX809J out-of-tree patches
 
+> **Android 17 / EvolutionX cnb (branch `nx809j-evo12`): use `a17/` only.**
+> `bash patches/a17/apply-a17-patches.sh` applies the seven one-commit fixes that live in repos
+> we did not fork (build/make signing, device/qcom/sepolicy, sepolicy_vndr/sm8750,
+> hardware/qcom-caf/common, Glimpse, SecureElement, modules/Nfc). Everything else NX809J
+> touches is an IronShing fork pinned by `manifest/nx809j.xml`. The directories below
+> (`frameworks_base/`, `vendor_lineage/`, `display_sm8850/`, `apply-patches.sh`, ...) are the
+> **LineageOS 23.2 / Android 16** set and will not apply to the cnb forks.
+
+
 Fixes that live in **shared LineageOS/AOSP repos we do not fork**, kept here as patches
 so they survive a `repo sync` (the device tree is forked, so this dir always persists).
 

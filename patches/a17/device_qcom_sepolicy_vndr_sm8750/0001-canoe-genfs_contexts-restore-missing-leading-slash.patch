@@ -1,0 +1,32 @@
+From 6791b00157627f3eb56d0e7324933a4f4be07044 Mon Sep 17 00:00:00 2001
+From: EvoX12 Spike <spike@localhost>
+Date: Tue, 25 Aug 2026 01:00:45 +0300
+Subject: [PATCH] canoe: genfs_contexts: restore missing leading slash
+
+lineage-24.0-caf-sm8750 ships:
+    genfscon sysfs devices/platform/soc/9800000.qcom,mdss_mdp/wakeup ...
+lineage-23.2-caf-sm8750 has the correct form with a leading slash. checkpolicy rejects
+the path-less form:
+    generic/vendor/canoe/genfs_contexts:292: ERROR 'syntax error' at token 'devices'
+breaking vendor_sepolicy.unversioned.cil. Upstream LOS 24.0 regression, not device-specific
+-- every line around it uses /devices/...
+
+Change-Id: Id18f07d76061386caa5b3bf469a379114cf3a277
+(cherry picked from commit c4004f31bf0946145cd8fea2e09814f78510e73a)
+---
+ generic/vendor/canoe/genfs_contexts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/generic/vendor/canoe/genfs_contexts b/generic/vendor/canoe/genfs_contexts
+index b89aa6292..49cf7efc8 100644
+--- a/generic/vendor/canoe/genfs_contexts
++++ b/generic/vendor/canoe/genfs_contexts
+@@ -289,4 +289,4 @@ genfscon sysfs /devices/virtual/misc/fastrpc-adsp-secure/wakeup38 u:object_r:sys
+ genfscon sysfs /devices/virtual/misc/fastrpc-cdsp/wakeup37 u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/virtual/misc/fastrpc-cdsp-secure/wakeup38 u:object_r:sysfs_wakeup:s0
+ genfscon sysfs /devices/virtual/misc/fastrpc-adsp-secure/wakeup40 u:object_r:sysfs_wakeup:s0
+-genfscon sysfs devices/platform/soc/9800000.qcom,mdss_mdp/wakeup u:object_r:sysfs_wakeup:s0
++genfscon sysfs /devices/platform/soc/9800000.qcom,mdss_mdp/wakeup u:object_r:sysfs_wakeup:s0
+-- 
+2.55.0
+

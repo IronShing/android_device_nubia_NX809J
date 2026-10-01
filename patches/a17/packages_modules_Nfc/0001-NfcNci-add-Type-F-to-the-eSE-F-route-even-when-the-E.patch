@@ -1,0 +1,71 @@
+From 491510c0d14b545759329ca03766929b1b082674 Mon Sep 17 00:00:00 2001
+From: John <john@primaryautotrd.com>
+Date: Sat, 19 Sep 2026 23:19:24 +0300
+Subject: [PATCH] NfcNci: add Type-F to the eSE F route even when the EE
+ reports techF=0
+
+The ST54 eSE on the NX809J JP SKU reports lf_protocol=0 so
+updateEeTechRouteSetting never routed FeliCa (Type-F) to it and Osaifu-Keitai
+taps failed. Add NFA_TECHNOLOGY_MASK_F for the F-route EE when it is the eSE
+named by DEFAULT_NFCF_ROUTE (isEseHandle: handle in OFFHOST_ROUTE_ESE); the
+UICC (0x81) route used by global SKUs is unchanged.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QRr3GvqD6vTkLFBCy38jby
+Change-Id: I6988a1153e158b0890d137e230310d67e998acad
+---
+ NfcNci/nci/jni/RoutingManager.cpp | 18 ++++++++++++++++++
+ NfcNci/nci/jni/RoutingManager.h   |  1 +
+ 2 files changed, 19 insertions(+)
+
+diff --git a/NfcNci/nci/jni/RoutingManager.cpp b/NfcNci/nci/jni/RoutingManager.cpp
+index 2c7981045..4806cf14f 100755
+--- a/NfcNci/nci/jni/RoutingManager.cpp
++++ b/NfcNci/nci/jni/RoutingManager.cpp
+@@ -1129,6 +1129,14 @@ bool RoutingManager::checkUiccListenConfigNeeded(
+ ** Returns:         None
+ **
+ *******************************************************************************/
++bool RoutingManager::isEseHandle(tNFA_HANDLE ee_handle) {
++  ee_handle &= ~NFA_HANDLE_GROUP_EE;
++  for (uint8_t i = 0; i < mOffHostRouteEse.size(); i++) {
++    if (ee_handle == mOffHostRouteEse[i]) return true;
++  }
++  return false;
++}
++
+ tNFA_TECHNOLOGY_MASK RoutingManager::updateEeTechRouteSetting() {
+   static const char fn[] = "RoutingManager::updateEeTechRouteSetting";
+   tNFA_TECHNOLOGY_MASK allSeTechMask = 0x00, hostTechMask = 0x00;
+@@ -1174,6 +1182,16 @@ tNFA_TECHNOLOGY_MASK RoutingManager::updateEeTechRouteSetting() {
+         (eeHandle == (mDefaultFelicaRoute | NFA_HANDLE_GROUP_EE))) {
+       if (localEeInfo.ee_disc_info[i].lf_protocol != 0) {
+         seTechMask |= NFA_TECHNOLOGY_MASK_F;
++      } else if (isEseHandle(eeHandle)) {
++        // NX809J JP SKU (Osaifu-Keitai): the ST HAL's FeliCa config routes F to the ST54
++        // eSE (DEFAULT_NFCF_ROUTE=0x86) but the NFCEE discover-req NTF reports techF=0 for
++        // it, so listen F never left the host and Suica/PASMO taps died. When the vendor
++        // explicitly names an eSE as the F route, honour it. UICC F routes (global SKUs,
++        // 0x81) keep the protocol check.
++        LOG(INFO) << StringPrintf(
++            "%s: EE 0x%04x is the configured eSE F route, adding F despite techF=0", fn,
++            eeHandle);
++        seTechMask |= NFA_TECHNOLOGY_MASK_F;
+       }
+     }
+ 
+diff --git a/NfcNci/nci/jni/RoutingManager.h b/NfcNci/nci/jni/RoutingManager.h
+index 2bf7c917d..3094b1979 100755
+--- a/NfcNci/nci/jni/RoutingManager.h
++++ b/NfcNci/nci/jni/RoutingManager.h
+@@ -63,6 +63,7 @@ class RoutingManager {
+   void notifyEeProtocolSelected(uint8_t protocol, tNFA_HANDLE ee_handle);
+   void notifyEeTechSelected(uint8_t tech, tNFA_HANDLE ee_handle);
+   bool getNameOfEe(tNFA_HANDLE ee_handle, std::string& eeName);
++  bool isEseHandle(tNFA_HANDLE ee_handle);
+   void setEeInfoChangedFlag();
+   bool isRTUpdateOptimized();
+ 
+-- 
+2.55.0
+

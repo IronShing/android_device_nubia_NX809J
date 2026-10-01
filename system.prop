@@ -10,3 +10,10 @@
 ro.logd.kernel=true
 persist.logd.logpersistd=logcatd
 persist.logd.logpersistd.size=64
+
+# XDA #231 — wake-up jitter. SurfaceFlinger's display-power timer keeps the panel at the
+# policy maximum for N ms after every setPowerMode (screen on / doze→on) and clears layer
+# history, so content detection cannot flip 60↔120↔144 through the unlock animation. AOSP
+# leaves it unset (nullopt = no timer); Pixels ship 1000. System side on purpose: the
+# shipped /vendor is the donor image, vendor.prop edits never reach the device.
+ro.surface_flinger.set_display_power_timer_ms=1000

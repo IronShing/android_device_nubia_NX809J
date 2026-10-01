@@ -50,6 +50,7 @@ public class RmApp extends Application {
         // Fast charging is the other time this device gets hot while nobody is holding it.
         // No-op unless the user enables it (persist.sys.rm.chargecool).
         ChargeCooling.start(this);
+        ChargeSeparation.start(this);
 
         // "Max WiFi" during games: keep the link out of power-save while GameSpace has
         // flipped persist.sys.power_mode_perf. No-op until a game triggers it.

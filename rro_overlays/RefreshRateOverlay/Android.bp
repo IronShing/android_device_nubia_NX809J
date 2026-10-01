@@ -1,0 +1,24 @@
+// Default refresh rate RRO (XDA #231, wake-up jitter).
+//
+// device/nubia/NX809J/overlay/frameworks/base/.../config.xml sets
+// config_defaultRefreshRate / config_defaultPeakRefreshRate = 144, but that
+// overlay is a PRODUCT_PACKAGE_OVERLAYS bake into framework-res.apk — the
+// lowest layer of all. The stock vendor image we ship (donor vendor_a.img)
+// carries a static RRO, /vendor/overlay/FrameworksResTarget_Vendor.apk
+// (android.overlay.target), that redefines both to 120 / 240 and wins:
+//
+//   cmd overlay lookup android android:integer/config_defaultRefreshRate → 120
+//   cmd overlay lookup android android:integer/config_defaultPeakRefreshRate → 240
+//
+// So DisplayModeDirector has been running a 120..240 policy all along, and
+// SurfaceFlinger's content detection flips the panel 60↔120↔144 every few
+// frames right after a wake (each mode switch costs frames → visible stutter
+// of the unlock animation). Static RROs are applied in partition order
+// system < vendor < odm < oem < product < system_ext, so this system_ext
+// overlay outranks the vendor one and finally lands the 144 Hz defaults.
+runtime_resource_overlay {
+    name: "NX809JRefreshRateOverlay",
+    resource_dirs: ["res"],
+    system_ext_specific: true,
+    sdk_version: "current",
+}

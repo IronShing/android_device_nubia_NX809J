@@ -156,7 +156,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullSensor"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
 
         <service android:name=".TouchpadTile" android:label="@string/tile_touchpad" android:icon="@drawable/ic_touchpad"
@@ -170,6 +170,10 @@
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
         <!-- Privacy guard: per-app camera / mic / location block the app cannot detect. -->
+        <service android:name=".ChargeSepTile" android:label="@string/tile_chargesep" android:icon="@drawable/ic_chargesep"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
         <service android:name=".PrivacyTile" android:label="@string/tile_privacy" android:icon="@drawable/ic_privacy"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>

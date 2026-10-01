@@ -32,7 +32,7 @@ public abstract class LevelTile extends TileService {
         refresh();
     }
 
-    private int curLevel() {
+    protected int curLevel() {
         try { return Math.max(0, Math.min(maxLevel(), Integer.parseInt(Prop.get(propKey(), "0").trim()))); }
         catch (Exception e) { return 0; }
     }

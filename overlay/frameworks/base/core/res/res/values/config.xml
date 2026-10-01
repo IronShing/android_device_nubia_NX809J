@@ -170,4 +170,11 @@
          adjustable per monitor in Settings > Connected devices > External displays > Display size. -->
     <integer name="config_externalDisplayBaseDensityAt1080p">160</integer>
     <string name="config_defaultListenerAccessPackages" translatable="false">com.google.android.projection.gearhead</string>
+    <!-- FeliCa/Osaifu-Keitai (XDA #190): com.felicanetworks.mfm.main's <queries> does not list Play,
+         so Google login fails (032016) unless Play is force-queryable. Keep AOSP defaults + Play. -->
+    <string-array name="config_forceQueryablePackages" translatable="false">
+        <item>com.android.settings</item>
+        <item>com.android.providers.settings</item>
+        <item>com.android.vending</item>
+    </string-array>
 </resources>

@@ -5,6 +5,11 @@
 // mapping is enabled, injects a real multi-touch touch at a user-set coordinate
 // through a uinput virtual touchscreen. Gives 0-latency, InputFlinger-clean
 // trigger->tap for games, replacing the stock Game Space handler we don't ship.
+//
+// The default "merged" engine (panel + triggers republished as ONE touchscreen
+// while a game is in front) is ported from Austin Young's Redmagic-Trigger-Bridge
+// (github.com/austineyoung2000/Redmagic-Trigger-Bridge, GPL-3.0). trigger_map is
+// a standalone binary, so the GPL-3.0 engine stays self-contained.
 cc_binary {
     name: "trigger_map",
     srcs: ["trigger_map.c"],

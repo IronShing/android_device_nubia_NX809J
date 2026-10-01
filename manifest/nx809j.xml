@@ -1,71 +1,119 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Local manifest — ZTE Nubia RedMagic 11 Pro (NX809J) on LineageOS 23.2.
-  Canonical copy; the live one lives at .repo/local_manifests/nx809j.xml.
+  Local manifest — ZTE Nubia RedMagic 11 Pro (NX809J) on Evolution X 12 (cnb / Android 17).
+  Canonical copy; install it as .repo/local_manifests/nx809j.xml.
+  (The LineageOS 23.2 / Android 16 manifest is on the nx809j-sourcedisplay branch.)
 
   Reproduce a buildable tree from scratch:
-    repo init -u https://github.com/LineageOS/android.git -b lineage-23.2
+    repo init -u https://github.com/Evolution-X/manifest -b cnb   (plus the git-lfs flag: EvoX needs it)
     mkdir -p .repo/local_manifests
-    cp device/nubia/NX809J/manifest/nx809j.xml .repo/local_manifests/   # (or curl the raw URL)
+    curl -Lo .repo/local_manifests/nx809j.xml \
+      https://raw.githubusercontent.com/IronShing/android_device_nubia_NX809J/nx809j-evo12/manifest/nx809j.xml
     repo sync -j8
-    bash device/nubia/NX809J/patches/apply-patches.sh    # out-of-tree fixes (see below)
-    source build/envsetup.sh && unset -f grep
-    lunch lineage_NX809J-bp4a-userdebug && m
+    bash device/nubia/NX809J/patches/a17/apply-a17-patches.sh   # 7 small fixes in un-forked repos
+    source build/envsetup.sh
+    lunch evolution_NX809J-cp2a-userdebug      # cp2a; bp4a fails soong (non-deterministic module_sdk errors)
+    export LINEAGE_BUILD=NX809J                # AFTER lunch — lunch clears it
+    m -j6 systemimage systemextimage productimage odmimage   # -j6: framework-heavy, OOMs at -j12 on 48 GB
 
-  The three IronShing projects below are device-specific. Fixes to the SHARED LOS/AOSP
-  repos (frameworks/base, vendor/lineage, packages/apps/CarrierConfig) are carried as
-  git patches in device/nubia/NX809J/patches/ and applied by apply-patches.sh — so
-  those repos stay upstream and need no fork. Prefer forks? Uncomment the block at the
-  bottom and push the matching branches (see patches/README.md).
+  Every repo with NX809J changes is a fork pinned here, so no patch step is needed for
+  them. Only build/make, device/qcom/sepolicy{,_vndr/sm8750}, hardware/qcom-caf/common,
+  Glimpse, SecureElement and modules/Nfc are left as patches (one commit each).
+  Branch convention: nx809j-evo12-cnb = rebased on Evolution-X's current cnb branch;
+  nx809j-evo12 = on the LineageOS/AOSP project EvoX inherits unchanged.
 -->
 <manifest>
-  <!-- Device tree (sepolicy, init, overlays, IMS graft, the patches/ + this manifest) -->
+  <!-- ===== Device ===== -->
   <project name="IronShing/android_device_nubia_NX809J"
-           path="device/nubia/NX809J" remote="github" revision="lineage-23" />
-
-  <!-- Prebuilt stock GKI kernel Image + stock DTBO (we ride the prebuilt kernel) -->
+           path="device/nubia/NX809J" remote="github" revision="nx809j-evo12" />
+  <!-- Prebuilt GKI kernel Image + DTB/DTBO (6.12.38, KSUN+SuSFS); no from-source kernel build -->
   <project name="IronShing/android_kernel_nubia_NX809J"
            path="device/nubia/NX809J-kernel" remote="github" revision="lineage-23" />
-
-  <!-- Vendor: extracted proprietary blobs (device rides the stock /vendor partition) -->
+  <!-- Vendor blobs (the device rides the stock /vendor partition, this is the build-time view) -->
   <project name="IronShing/android_vendor_nubia_NX809J"
-           path="vendor/nubia/NX809J" remote="github" revision="lineage-23" />
+           path="vendor/nubia/NX809J" remote="github" revision="nx809j-sourcedisplay" />
 
+  <!-- ===== Display: sm8850 source at the sm8750 path =====
+       EvoX cnb ships LineageOS's lineage-24.0-caf-sm8750 display, which caps at
+       composer3-V3 / aiqe-V2 / config-V13 — the NX809J stock display blobs need the sm8850
+       generation (composer3-V4 / aiqe-V3). These are petalFTW's sm8850 snapshot on
+       lineage-24.0 plus the NX809J port commits (SetupAtomic bounds, ZTE panel, header
+       wiring, libvmmem). intf stays on LineageOS's lineage-24.0-caf-sm8750 base with the
+       NX809J commit on top. -->
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-core"
+                  path="hardware/qcom-caf/sm8750/display/core" />
+  <project name="IronShing/hardware_qcom-caf_sm8850_display_core"
+           path="hardware/qcom-caf/sm8750/display/core"
+           remote="github" revision="nx809j-evo12" groups="qcom" />
 
-  <!-- Display: swap LineageOS sm8750 display for the OnePlus-SM8850-Development
-       sm8850 source (composer3-V4 / config-V13 / aiqe-V3 = version-matched to the
-       NX809J stock display blobs; the sm8750 source only had composer3-V1/aiqe-V2).
-       Pulled to the sm8750/display path so the device's existing sm8750 display
-       namespace + wiring is reused. NX809J port fixes (SetupAtomic bounds, header
-       wiring, libvmmem, namespace) are applied by patches/display_sm8850/ via
-       apply-patches.sh. See patches/display_sm8850/README.md. -->
-  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-core" />
-  <project name="OnePlus-SM8850-Development/android_vendor_qcom_opensource_display-core"
-           path="hardware/qcom-caf/sm8750/display/core" remote="github"
-           revision="lineage-23.2-caf-sm8850" />
+  <remove-project name="LineageOS/android_hardware_qcom_display"
+                  path="hardware/qcom-caf/sm8750/display/hal" />
+  <project name="IronShing/hardware_qcom-caf_sm8850_display_hal"
+           path="hardware/qcom-caf/sm8750/display/hal"
+           remote="github" revision="nx809j-evo12" groups="qcom" />
 
-  <remove-project name="LineageOS/android_hardware_qcom_display" />
-  <project name="OnePlus-SM8850-Development/android_hardware_qcom_display"
-           path="hardware/qcom-caf/sm8750/display/hal" remote="github"
-           revision="lineage-23.2-caf-sm8850" />
+  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-intf"
+                  path="hardware/qcom-caf/sm8750/display/intf" />
+  <project name="IronShing/hardware_qcom-caf_sm8850_display_intf"
+           path="hardware/qcom-caf/sm8750/display/intf"
+           remote="github" revision="nx809j-evo12" groups="qcom" />
 
-  <remove-project name="LineageOS/android_vendor_qcom_opensource_display-intf" />
-  <project name="OnePlus-SM8850-Development/android_vendor_qcom_opensource_display-intf"
-           path="hardware/qcom-caf/sm8750/display/intf" remote="github"
-           revision="lineage-23.2-caf-sm8850" />
+  <!-- ===== Evolution X forks (rebased on cnb) ===== -->
+  <remove-project name="frameworks_base" path="frameworks/base" />
+  <project name="IronShing/frameworks_base"
+           path="frameworks/base" remote="github" revision="nx809j-evo12-cnb" groups="pdk-cw-fs,pdk-fs,sysui-studio" />
 
-  <!-- OPTIONAL: forks instead of patches/ (heavier; only if you don't want the
-       apply-patches.sh step). Push the listed branches first, then uncomment:
-  <remove-project name="LineageOS/android_frameworks_base" />
-  <project name="IronShing/android_frameworks_base"
-           path="frameworks/base" remote="github" revision="nx809j" />
+  <remove-project name="frameworks_av" path="frameworks/av" />
+  <project name="IronShing/frameworks_av"
+           path="frameworks/av" remote="github" revision="nx809j-evo12-cnb" groups="pdk,sysui-studio" />
 
-  <remove-project name="LineageOS/android_vendor_lineage" />
+  <!-- GPP surface extension (libgui), BufferReleaseChannel hang fix -->
+  <remove-project name="frameworks_native" path="frameworks/native" />
+  <project name="IronShing/frameworks_native"
+           path="frameworks/native" remote="github" revision="nx809j-gpp" groups="pdk" />
+
+  <remove-project name="frameworks_opt_telephony" path="frameworks/opt/telephony" />
+  <project name="IronShing/frameworks_opt_telephony"
+           path="frameworks/opt/telephony" remote="github" revision="nx809j-evo12-cnb" groups="pdk,sysui-studio" />
+
+  <remove-project name="packages_apps_Settings" path="packages/apps/Settings" />
+  <project name="IronShing/packages_apps_Settings"
+           path="packages/apps/Settings" remote="github" revision="nx809j-evo12-cnb" groups="pdk-fs,pdk-cw-tvc,sysui-studio" />
+
+  <remove-project name="packages_apps_GameSpace" path="packages/apps/GameSpace" />
+  <project name="IronShing/packages_apps_GameSpace"
+           path="packages/apps/GameSpace" remote="github" revision="nx809j-evo12-cnb" />
+
+  <remove-project name="lineage-sdk" path="lineage-sdk" />
+  <project name="IronShing/lineage-sdk"
+           path="lineage-sdk" remote="github" revision="nx809j-evo12-cnb" />
+
+  <remove-project name="vendor_extras" path="vendor/extras" />
+  <project name="IronShing/vendor_extras"
+           path="vendor/extras" remote="github" revision="nx809j-evo12-cnb" />
+
+  <remove-project name="vendor_evolution" path="vendor/lineage" />
   <project name="IronShing/android_vendor_lineage"
-           path="vendor/lineage" remote="github" revision="nx809j" />
+           path="vendor/lineage" remote="github" revision="nx809j-evo12-cnb" />
 
-  <remove-project name="platform/packages/apps/CarrierConfig" />
+  <!-- ===== LineageOS / AOSP forks ===== -->
+  <remove-project name="LineageOS/android_hardware_lineage_interfaces" path="hardware/lineage/interfaces" />
+  <project name="IronShing/android_hardware_lineage_interfaces"
+           path="hardware/lineage/interfaces" remote="github" revision="nx809j-evo12-cnb" />
+
+  <remove-project name="platform/packages/apps/CarrierConfig" path="packages/apps/CarrierConfig" />
   <project name="IronShing/android_packages_apps_CarrierConfig"
-           path="packages/apps/CarrierConfig" remote="github" revision="nx809j-volte-41902" />
-  -->
+           path="packages/apps/CarrierConfig" remote="github" revision="nx809j-evo12-cnb" groups="pdk-cw-fs,pdk-fs" />
+
+  <remove-project name="LineageOS/android_packages_apps_Launcher3" path="packages/apps/Launcher3" />
+  <project name="IronShing/android_packages_apps_Launcher3"
+           path="packages/apps/Launcher3" remote="github" revision="nx809j-evo12" groups="pdk-fs,sysui-studio,pdk-cw-tvc" />
+
+  <remove-project name="LineageOS/android_packages_apps_Dialer" path="packages/apps/Dialer" />
+  <project name="IronShing/android_packages_apps_Dialer"
+           path="packages/apps/Dialer" remote="github" revision="nx809j-evo12" groups="pdk-fs" />
+
+  <remove-project name="LineageOS/android_packages_inputmethods_LatinIME" path="packages/inputmethods/LatinIME" />
+  <project name="IronShing/android_packages_inputmethods_LatinIME"
+           path="packages/inputmethods/LatinIME" remote="github" revision="nx809j-evo12" groups="pdk-fs" />
 </manifest>

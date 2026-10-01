@@ -58,7 +58,7 @@ namespace {
 // Values are property-tunable so they can be validated/tuned on-device without a rebuild:
 //   persist.sys.rm.gameperf.c0_mhz   (default 2496) - cluster 0 min freq, MHz
 //   persist.sys.rm.gameperf.c1_mhz   (default 3000) - cluster 1 / prime min freq, MHz
-//   persist.sys.rm.gameperf.gpu_lvl  (default -1)   - kgsl min power level; -1 = NOT requested
+//   persist.sys.rm.gameperf.debug_gpu_lvl (default -1) - kgsl min power level; -1 = NOT requested
 // The perf HAL rounds each freq to the nearest supported OPP. Unknown opcodes are ignored by the
 // HAL, so an inapplicable cluster opcode is harmless.
 //
@@ -71,13 +71,18 @@ namespace {
 // fights thermal-engine's 826 MHz skin cap instead of adding speed). The GPU floor now has one
 // owner: redmagic_hw_arm.rc writing min_freq_mhz from persist.sys.rm.gamegpu.mhz. The opcode is
 // kept only as an opt-in tuning knob (gpu_lvl >= 0) so it can still be tested live.
+// RENAMED 2026-10-01 (XDA #247, Bobo9996 "GPU stuck at 967 MHz even in a browser"): the 08-15
+// release post told people to `setprop persist.sys.rm.gameperf.gpu_lvl 0` to tune the lock; a
+// value set back then persists in /data through every ROM update and kept pinning min_pwrlevel
+// (2 = 967 MHz on his unit) long after the default moved to -1, overriding the Balanced profile.
+// The old property is deliberately no longer read.
 std::vector<int> BuildBoostArgs() {
   auto prop = [](const char* k, int def) {
     return android::base::GetIntProperty(k, def, 0, 6000);
   };
   const int c0 = prop("persist.sys.rm.gameperf.c0_mhz", 2496);
   const int c1 = prop("persist.sys.rm.gameperf.c1_mhz", 3000);
-  const int gpu = android::base::GetIntProperty("persist.sys.rm.gameperf.gpu_lvl", -1, -1, 17);
+  const int gpu = android::base::GetIntProperty("persist.sys.rm.gameperf.debug_gpu_lvl", -1, -1, 17);
   std::vector<int> a;
   a.push_back(0x40800000); a.push_back(c0);   // cluster 0 (cores 0-5) min freq
   a.push_back(0x40800010); a.push_back(c1);   // cluster 1 (prime cores 6-7) min freq
@@ -160,6 +165,20 @@ std::string g_savedFan, g_savedCooling, g_savedFanAuto;
 // cooling hold. Gating the state-save on this is what stops a game launched during
 // a cooldown from saving the already-boosted 5/on values as the "user" state.
 bool g_boostActive = false;
+// What the boost itself wrote, so the restore can tell a level the user picked during the
+// game (RedMagic Control fan slider / tile) from our own: the user's choice must survive
+// the game exit instead of being replaced by the pre-game state (XDA #227 "set the fan to 5
+// while gaming, started 3DMark, the fan just stopped").
+std::string g_setFan, g_setFanAuto;
+
+// Did the user move the fan (RedMagic Control tile / Cooling fan row) since the boost wrote
+// it? In the Auto branch hwcontrol rewrites fan.level from the curve, so only the mode counts
+// there; in the pinned branch a different level means the user moved it.
+bool UserMovedFan() {
+  const std::string curFan = android::base::GetProperty("persist.sys.fan.level", "0");
+  const std::string curAuto = android::base::GetProperty("persist.sys.rm.fan_auto", "");
+  return curAuto != g_setFanAuto || (g_setFanAuto == "0" && curFan != g_setFan);
+}
 
 void CoolingBoost(bool on) {
   if (on) {
@@ -170,6 +189,14 @@ void CoolingBoost(bool on) {
       g_savedFanAuto = android::base::GetProperty("persist.sys.rm.fan_auto", "");
       g_savedFan = android::base::GetProperty("persist.sys.fan.level", "0");
       g_savedCooling = android::base::GetProperty("persist.sys.cooling.level", "0");
+    } else if (UserMovedFan()) {
+      // Re-assert (a game re-entered during the cooling hold, or 3DMark's benchmark activity
+      // flipping the foreground): the user moved the fan since we set it, so that is the fan
+      // for this session -- re-applying "Fan speed while gaming" here would silently undo the
+      // tile change (XDA #235 "set 5 in the panel, run 3DMark, back to auto").
+      android::base::SetProperty("persist.sys.cooling.level", "1");
+      LOG(INFO) << "gameperfd: boost re-assert, keeping the user's fan";
+      return;
     }
     // Honour the user's own two settings instead of hardcoding full blast. "Cool while gaming"
     // off means we never touch cooling at all; "Fan speed while gaming = Auto" means leave the
@@ -179,21 +206,66 @@ void CoolingBoost(bool on) {
         android::base::GetProperty("persist.sys.rm.gamecool.fan", "auto");
     if (want == "auto") {
       android::base::SetProperty("persist.sys.rm.fan_auto", "1");   // curve drives the fan
+      g_setFanAuto = "1";
+      g_setFan = android::base::GetProperty("persist.sys.fan.level", "0");
     } else {
       android::base::SetProperty("persist.sys.rm.fan_auto", "0");   // stop auto-fan fighting us
       android::base::SetProperty("persist.sys.fan.level", want);
+      g_setFanAuto = "0";
+      g_setFan = want;
     }
     android::base::SetProperty("persist.sys.cooling.level", "1");   // pump ON = full (piezo is on/off)
     g_boostActive = true;
   } else {
     if (!g_boostActive) return;  // nothing to restore
-    android::base::SetProperty("persist.sys.fan.level", g_savedFan.empty() ? "0" : g_savedFan);
+    const std::string curFan = android::base::GetProperty("persist.sys.fan.level", "0");
+    const std::string curAuto = android::base::GetProperty("persist.sys.rm.fan_auto", "");
+    const bool userChanged = UserMovedFan();
+    if (!userChanged) {
+      android::base::SetProperty("persist.sys.fan.level", g_savedFan.empty() ? "0" : g_savedFan);
+      if (!g_savedFanAuto.empty()) {
+        android::base::SetProperty("persist.sys.rm.fan_auto", g_savedFanAuto);
+      }
+    } else {
+      // The user moved the fan during the game: that is the new setting, keep it.
+      LOG(INFO) << "gameperfd: fan changed during the game (level=" << curFan
+                << " auto=" << curAuto << "), keeping it";
+    }
     android::base::SetProperty("persist.sys.cooling.level",
                                g_savedCooling.empty() ? "0" : g_savedCooling);
-    if (!g_savedFanAuto.empty()) {
-      android::base::SetProperty("persist.sys.rm.fan_auto", g_savedFanAuto);
-    }
     g_boostActive = false;
+  }
+}
+
+// Touch sampling while gaming (XDA #189/#191 "ultra-high touch sampling"). The Synaptics
+// 3910V panel (zte_tpd) boots at /proc/touchscreen/tp_report_rate=1 and nothing in this ROM
+// ever changed it, so every game ran at 180 Hz. The node's values are gears, not Hz --
+// dynamic config 230 maps 0=120 1=180 2=300 3=360 4=720 Hz (dmesg
+// "syna_dev_set_tp_report_rate: success in NNNHz", verified live 2026-09-20). Stock's
+// TpReportRateController + GameSpace gear (marketing "480/960 Hz" = real 360/720) wrote
+// rate 3/4 plus /proc/touchscreen/play_game=1 (firmware game mode, dynamic config 213) for
+// listed games and put both back when the game left. Same here, keyed to power_mode_perf.
+// persist.sys.rm.gametouch.rate: 0 = leave the panel alone, else gear 2..4 (default 4).
+// Writes with the screen off are stored by the driver and applied at resume, so the
+// restore on exit is safe whatever state the panel is in.
+constexpr const char* kTpRateNode = "/proc/touchscreen/tp_report_rate";
+constexpr const char* kTpGameNode = "/proc/touchscreen/play_game";
+constexpr const char* kTpRateIdle = "1";  // driver default, 180 Hz
+static bool g_touchActive = false;
+
+void TouchBoost(bool on) {
+  if (on) {
+    int gear = android::base::GetIntProperty("persist.sys.rm.gametouch.rate", 4, 0, 4);
+    if (gear <= 0) return;
+    WriteFile(kTpGameNode, "1");
+    WriteFile(kTpRateNode, std::to_string(gear));
+    g_touchActive = true;
+    LOG(INFO) << "gameperfd: touch gear " << gear << " + game mode";
+  } else if (g_touchActive) {
+    WriteFile(kTpRateNode, kTpRateIdle);
+    WriteFile(kTpGameNode, "0");
+    g_touchActive = false;
+    LOG(INFO) << "gameperfd: touch restored";
   }
 }
 
@@ -289,6 +361,7 @@ int main(int argc, char** argv) {
           handle = g_acq(0, 0, args.data(), static_cast<int>(args.size()));
         }
         SetNetAffinity(true);
+        TouchBoost(true);
         CoolingBoost(true);     // (re)assert; a game started mid-cooldown cancels the hold
         cooldownTicks = 0;
         LOG(INFO) << "gameperfd: boost ON, handle=" << handle;
@@ -297,6 +370,7 @@ int main(int argc, char** argv) {
         // once the game is gone.
         if (handle > 0) { g_rel(handle); handle = 0; }
         SetNetAffinity(false);
+        TouchBoost(false);
         // Cooling lingers: keep the fan/pump running and restore the user's setting only
         // once the phone has cooled, so exiting a heavy game does not leave residual heat
         // soaking. Capped by cooldown_max_s so it can never run away.

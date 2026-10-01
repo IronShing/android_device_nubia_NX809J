@@ -131,6 +131,28 @@ final class PrivacyGuard {
         }
     }
 
+    /** Android partial photo access: READ_MEDIA_VISUAL_USER_SELECTED granted, full photo/video not. */
+    static boolean partialPhotoAccess(Context ctx, String pkg) {
+        final PackageManager pm = ctx.getPackageManager();
+        return pm.checkPermission(android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED, pkg)
+                        == PackageManager.PERMISSION_GRANTED
+                && pm.checkPermission(android.Manifest.permission.READ_MEDIA_IMAGES, pkg)
+                        != PackageManager.PERMISSION_GRANTED
+                && pm.checkPermission(android.Manifest.permission.READ_MEDIA_VIDEO, pkg)
+                        != PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Comma list of {@link #permWord} for every bit set in mask. */
+    static String permWords(int mask) {
+        final StringBuilder sb = new StringBuilder();
+        for (int b : BITS) {
+            if ((mask & b) == 0) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(permWord(b));
+        }
+        return sb.toString();
+    }
+
     static final long ALLOW_MS = 10 * 60 * 1000L;
     /** Durations offered for a temporary per-permission allowance. */
     static final long[] ALLOW_CHOICES_MS = { 5 * 60 * 1000L, 10 * 60 * 1000L };
@@ -297,8 +319,8 @@ final class PrivacyGuard {
     static void setMask(Context ctx, String pkg, int mask) {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
         if (mask == 0) {
-            ed.remove(KEY_MASK + pkg).remove(KEY_MUTE + pkg).remove(KEY_AA + pkg)
-                    .remove(KEY_CALLASK + pkg);
+            ed.remove(KEY_MASK + pkg).remove(KEY_AA + pkg).remove(KEY_CALLASK + pkg);
+            removeMuteKeys(ed, prefs(ctx).getAll(), pkg);
             revokeAllAllows(ctx, ed, pkg);
             removeAutoRules(ed, prefs(ctx).getAll(), pkg);
         }
@@ -360,19 +382,69 @@ final class PrivacyGuard {
      * 10 min" action is still reachable from the app's row in the Privacy tab; a single noisy
      * screen is better handled by the per-screen quiet rule (SCREEN_BLOCK).
      */
-    static boolean muted(Context ctx, String pkg) {
-        return prefs(ctx).getBoolean(KEY_MUTE + pkg, false);
+    // Per permission since 2026-09-21: "Always block" on a Contacts prompt used to silence the
+    // app's Location prompts too (Careem never asked for location after its onboarding ask was
+    // muted). "mute:<pkg>" (legacy, whole app) still reads as every permission; "mute:<pkg>:<bit>"
+    // quiets just that one, so the other guarded permissions of the app keep prompting.
+    static boolean muted(Context ctx, String pkg, int bit) {
+        final SharedPreferences p = prefs(ctx);
+        return p.getBoolean(KEY_MUTE + pkg, false) || p.getBoolean(KEY_MUTE + pkg + ":" + bit, false);
     }
 
+    /** Bits of pkg whose alerts are muted (ALL for the legacy whole-app mute). */
+    static int mutedMask(Context ctx, String pkg) {
+        final SharedPreferences p = prefs(ctx);
+        if (p.getBoolean(KEY_MUTE + pkg, false)) return ALL;
+        int m = 0;
+        for (int b = 1; b != 0 && b <= ALL; b <<= 1) if (p.getBoolean(KEY_MUTE + pkg + ":" + b, false)) m |= b;
+        return m;
+    }
+
+    /** True when every currently guarded permission of pkg is muted (the editor's app-wide box). */
+    static boolean muted(Context ctx, String pkg) {
+        final int mask = maskOf(ctx, pkg);
+        return mask != 0 && (mutedMask(ctx, pkg) & mask) == mask;
+    }
+
+    /** Whole-app mute on/off (editor checkbox): on = legacy key; off = clears every mute key. */
     static void setMuted(Context ctx, String pkg, boolean on) {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
-        if (on) ed.putBoolean(KEY_MUTE + pkg, true); else ed.remove(KEY_MUTE + pkg);
+        if (on) ed.putBoolean(KEY_MUTE + pkg, true);
+        else removeMuteKeys(ed, prefs(ctx).getAll(), pkg);
         ed.apply();
-        if (on) {                                // take down any already showing
-            cancelNotification(ctx, pkg);
-            final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
-            for (int b = 1; b != 0 && b <= ALL; b <<= 1) if (allowedUntil(ctx, pkg, b) == 0) nm.cancel(pkg, b);   // keep live countdowns
+        if (on) cancelBlockedAlerts(ctx, pkg, ALL);
+    }
+
+    /** Mute / un-mute one permission's alerts. Un-muting one bit under a legacy whole-app mute
+     *  expands that mute into per-bit keys for the rest first. */
+    static void setMuted(Context ctx, String pkg, int bit, boolean on) {
+        final SharedPreferences p = prefs(ctx);
+        final SharedPreferences.Editor ed = p.edit();
+        if (on) {
+            ed.putBoolean(KEY_MUTE + pkg + ":" + bit, true);
+        } else {
+            if (p.getBoolean(KEY_MUTE + pkg, false)) {
+                ed.remove(KEY_MUTE + pkg);
+                final int mask = maskOf(ctx, pkg);
+                for (int b = 1; b != 0 && b <= ALL; b <<= 1) if ((mask & b) != 0 && b != bit) ed.putBoolean(KEY_MUTE + pkg + ":" + b, true);
+            }
+            ed.remove(KEY_MUTE + pkg + ":" + bit);
         }
+        ed.apply();
+        Log.i(TAG, (on ? "always block " : "ask again ") + pkg + " " + permWord(bit));
+        if (on) cancelBlockedAlerts(ctx, pkg, bit);
+    }
+
+    private static void removeMuteKeys(SharedPreferences.Editor ed, Map<String, ?> all, String pkg) {
+        ed.remove(KEY_MUTE + pkg);
+        for (String k : all.keySet()) if (k.startsWith(KEY_MUTE + pkg + ":")) ed.remove(k);
+    }
+
+    /** Take down the "blocked" heads-up / expired prompts for the bits just muted (keeps live countdowns). */
+    private static void cancelBlockedAlerts(Context ctx, String pkg, int bits) {
+        cancelNotification(ctx, pkg);
+        final NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+        for (int b = 1; b != 0 && b <= ALL; b <<= 1) if ((bits & b) != 0 && allowedUntil(ctx, pkg, b) == 0) nm.cancel(pkg, b);
     }
 
     // ---- screen rules: auto-allow while a specific activity is in front --------------------
@@ -1015,13 +1087,12 @@ final class PrivacyGuard {
     private static final ArrayMap<String, Long> sLastPrompted = new ArrayMap<>();
 
     private static void notifyBlocked(Context ctx, String pkg, int bit) {
-        // "Always block" = the per-app mute: never ask again for this app, on screen or not.
-        // (Tried "mute = background heads-ups only" on 2026-09-19 so a muted WhatsApp could still
-        // prompt for a share-location tap: YouTube / Instagram then prompted on every launch
+        // "Always block" = the mute for this app + permission: never ask again for it, on screen
+        // or not. (Tried "mute = background heads-ups only" on 2026-09-19 so a muted WhatsApp could
+        // still prompt for a share-location tap: YouTube / Instagram then prompted on every launch
         // probe despite Always block -- a launch probe and a user tap look the same to an app-op
-        // watcher. The per-screen quiet rule below is the finer tool; un-mute the app to get
-        // prompts back.)
-        if (muted(ctx, pkg)) return;
+        // watcher. The per-screen quiet rule below is the finer tool; un-mute to get prompts back.)
+        if (muted(ctx, pkg, bit)) return;
         final long now = SystemClock.elapsedRealtime();
         final String throttleKey = pkg + ":" + bit;
         final String what = permWord(bit);
@@ -1124,7 +1195,7 @@ final class PrivacyGuard {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             nb.addAction(new Notification.Action.Builder(null, mins + " min", allow).build());
         }
-        nb.addAction(new Notification.Action.Builder(null, "Always block", muteIntent(ctx, pkg)).build());
+        nb.addAction(new Notification.Action.Builder(null, "Always block", muteIntent(ctx, pkg, bit)).build());
         nm.notify(pkg, 0, nb.build());
         synchronized (sIgnored) {                          // counts as ignored until answered
             final Integer n = sIgnored.get(throttleKey);
@@ -1132,10 +1203,11 @@ final class PrivacyGuard {
         }
     }
 
-    /** "Always block": mute this app's blocked alerts (PrivacyGuardReceiver -> setMuted). */
-    private static PendingIntent muteIntent(Context ctx, String pkg) {
-        return PendingIntent.getBroadcast(ctx, (pkg + ":mute").hashCode(),
-                new Intent(ACTION_MUTE).setClass(ctx, PrivacyGuardReceiver.class).putExtra(EXTRA_PKG, pkg),
+    /** "Always block": mute this app's alerts for this permission (PrivacyGuardReceiver -> setMuted). */
+    private static PendingIntent muteIntent(Context ctx, String pkg, int bit) {
+        return PendingIntent.getBroadcast(ctx, (pkg + ":mute:" + bit).hashCode(),
+                new Intent(ACTION_MUTE).setClass(ctx, PrivacyGuardReceiver.class)
+                        .putExtra(EXTRA_PKG, pkg).putExtra(EXTRA_BIT, bit),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
@@ -1212,7 +1284,7 @@ final class PrivacyGuard {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             nb.addAction(new Notification.Action.Builder(null, mins + " min", allow).build());
         }
-        nb.addAction(new Notification.Action.Builder(null, "Always block", muteIntent(ctx, pkg)).build());
+        nb.addAction(new Notification.Action.Builder(null, "Always block", muteIntent(ctx, pkg, bit)).build());
         nm.notify(pkg, bit, nb.build());
     }
 

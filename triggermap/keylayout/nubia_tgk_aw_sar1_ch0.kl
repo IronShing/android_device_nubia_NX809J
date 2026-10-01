@@ -1,0 +1,4 @@
+# LEFT shoulder trigger (Awinic SAR sensor, channel 1).
+# Emits KEY_F8 (66); see nubia_tgk_aw_sar0_ch0.kl for why this is not left as F8.
+key 66    BUTTON_L1
+key 59    F1

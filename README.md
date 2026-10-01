@@ -1,3 +1,45 @@
+# EvolutionX 12 (Android 17) / LineageOS device tree — ZTE Nubia RedMagic 11 Pro (NX809J / `qwjujube`)
+
+> **This branch (`nx809j-evo12`) is the Android 17 tree** behind the EvolutionX 12.x builds in the
+> XDA thread. Everything below the A17 section is the original LineageOS 23.2 (Android 16) write-up,
+> kept for the port history; its manifest/patch instructions live on the `nx809j-sourcedisplay` branch.
+
+## Android 17 (EvolutionX cnb) — how to build
+
+```
+repo init -u https://github.com/Evolution-X/manifest -b cnb --git-lfs
+mkdir -p .repo/local_manifests
+curl -Lo .repo/local_manifests/nx809j.xml \
+  https://raw.githubusercontent.com/IronShing/android_device_nubia_NX809J/nx809j-evo12/manifest/nx809j.xml
+repo sync -j8
+bash device/nubia/NX809J/patches/a17/apply-a17-patches.sh    # 7 one-commit fixes in un-forked repos
+source build/envsetup.sh
+lunch evolution_NX809J-cp2a-userdebug      # cp2a — bp4a fails soong (non-deterministic module_sdk errors)
+export LINEAGE_BUILD=NX809J                # AFTER lunch (lunch clears it)
+m -j6 systemimage systemextimage productimage odmimage   # or a full `m`; -j6 — this tree OOMs at -j12 on 48 GB
+```
+
+- `manifest/nx809j.xml` pins **every** repo that carries NX809J changes as an IronShing fork
+  (display core/hal/intf, frameworks/base, av, native, opt/telephony, Settings, GameSpace,
+  lineage-sdk, vendor/extras, vendor/lineage, hardware/lineage/interfaces, CarrierConfig,
+  Launcher3, Dialer, LatinIME). Branch `nx809j-evo12-cnb` = rebased on Evolution-X's `cnb`;
+  `nx809j-evo12` = on a LineageOS/AOSP project EvoX inherits unchanged. The old
+  `patches/{frameworks_base,vendor_lineage,display_sm8850,...}` + `apply-patches.sh` are the
+  **A16/LOS 23.2** set and are not used here — only `patches/a17/`.
+- Display: the sm8850 display source (petalFTW's lineage-24.0 snapshot + the NX809J commits) is
+  pulled to the `hardware/qcom-caf/sm8750/display/*` path; LOS's sm8750 display stops at
+  composer3-V3 and the stock NX809J blobs need V4.
+- Variants: `NX809J_MINIMAL=true` (Minimal, GApps core), `NX809J_MICROG=true`, default = FullGApps
+  (see `evolution_NX809J.mk`; Android Auto only in Full, `NX809J_SHIP_AA`).
+- Super/EDL packaging is the same as on A16: tree-built system/system_ext/product/odm + the
+  kit's vendor_a / vendor_dlkm_a / system_dlkm_a, `lpmake` (19 GB virtual A/B, 3 metadata
+  slots), flashed over EDL with `qdl` — see the "Source" section of the XDA thread's OP and
+  the kit's `update_edl.sh`. Signing: `patches/a17/build_make` is required or
+  `sign_target_files_apks` dies with a TypeError on the zipped input.
+- Credits for the A17 work are at the bottom (Credits).
+
+---
+
 # LineageOS 23.2 device tree — ZTE Nubia RedMagic 11 Pro (NX809J / `canoe`)
 
 A **device-specific** LineageOS 23.2 (Android 16 / SDK 36) port for the RedMagic 11 Pro
@@ -66,3 +108,5 @@ camera, and thermal HALs.
 
 ## Credits
 Bring-up by IronShing. Stock kernel/vendor from ZTE/Nubia firmware (BP2A.250605, REDMAGICOS 11).
+Shoulder-trigger merged-touch engine (`triggermap/trigger_map.c`) ported from Austin Young's
+[Redmagic-Trigger-Bridge](https://github.com/austineyoung2000/Redmagic-Trigger-Bridge) (GPL-3.0).

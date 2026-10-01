@@ -15,6 +15,7 @@
     <string name="trigger_map_title">Shoulder trigger mapping</string>
     <string name="tile_monitor_only">Monitor only</string>
     <string name="tile_privacy">Privacy guard</string>
+    <string name="tile_chargesep">Charge separation</string>
     <string name="off">Off</string>
     <string name="on">On</string>
     <string name="level_low">Low</string>

@@ -107,7 +107,9 @@ public class SettingsActivity extends Activity {
                 + "set to Auto out of the box, so the phone still cools itself by temperature. Set "
                 + "that one to Off if you want the fan silent.");
         gpuProfileRow(cooling);
+        gameTouchRateRow(cooling);
         gppSection(cooling);
+        chargeSepSection(cooling);
         // GamePerfWifi has no setting of its own -- it is automatic and therefore invisible, and
         // people have gone looking for a "wifi low latency" toggle that does not exist. Say so.
         note(cooling, "Launching a game from Game Space also maxes out WiFi performance "
@@ -141,6 +143,9 @@ public class SettingsActivity extends Activity {
         header(controls, "Shoulder triggers");
         rmSwitch(controls, "Left trigger (L)", "persist.sys.rm.trigger_left", true);
         rmSwitch(controls, "Right trigger (R)", "persist.sys.rm.trigger_right", true);
+        note(controls, "The triggers are only live while a game from Game Space is in front; "
+                + "everywhere else the sensors are switched off so a squeeze cannot reach the "
+                + "app (browsers treat them as gamepad back/forward).");
 
         // Map the shoulder triggers to on-screen taps (trigger_map daemon). When off,
         // the triggers only emit F7/F8 as before; when on, each fires a real touch at
@@ -248,12 +253,22 @@ public class SettingsActivity extends Activity {
                 + "work (local backups, indexing) waits longer. Expect a small saving.");
         minutesRow(system, "Light doze window", OfflineDoze.KEY_LIGHT_IDLE, OfflineDoze.DEF_LIGHT_IDLE);
         minutesRow(system, "Light doze maximum", OfflineDoze.KEY_LIGHT_MAX, OfflineDoze.DEF_LIGHT_MAX);
-        minutesRow(system, "Deep doze maintenance", OfflineDoze.KEY_IDLE_PENDING, OfflineDoze.DEF_IDLE_PENDING);
-        minutesRow(system, "Deep doze maximum", OfflineDoze.KEY_MAX_PENDING, OfflineDoze.DEF_MAX_PENDING);
-        note(system, "How long the phone sleeps between wake-ups while offline. Android's own "
-                + "values are 5 / 30 / 5 / 10 min — higher means fewer wake-ups. These only "
-                + "apply while offline and only while the switch above is on.");
+        minutesRow(system, "Deep doze window", OfflineDoze.KEY_IDLE, OfflineDoze.DEF_IDLE,
+                new int[] {60, 90, 120, 180, 240, 360});
+        minutesRow(system, "Deep doze maximum", OfflineDoze.KEY_MAX_IDLE, OfflineDoze.DEF_MAX_IDLE,
+                new int[] {360, 480, 720, 1440});
+        note(system, "How long the phone sleeps between maintenance wake-ups while offline; each "
+                + "window doubles until it reaches the maximum. Android's own values are "
+                + "5 / 15 min (light doze) and 1 / 6 h (deep doze) — higher means fewer wake-ups. "
+                + "While the switch is on and the phone is offline, background alarms from apps "
+                + "(including Google Play services, which Android otherwise lets through) also "
+                + "wait for the next window; alarm clocks still ring. Only while offline and only "
+                + "while the switch above is on.");
         batteryStatsRow(system);
+
+        // ---- Add-ons (XDA #250, NX123Dos) ----
+        header(system, "Google add-ons");
+        addonsSection(system);
 
         header(system, "Logs");
         logCaptureSection(system);
@@ -2415,7 +2430,11 @@ public class SettingsActivity extends Activity {
             java.util.Collections.sort(sorted, (a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
                     PrivacyGuard.label(this, a.getKey()), PrivacyGuard.label(this, b.getKey())));
             for (java.util.Map.Entry<String, Integer> e : sorted) {
-                final String key = PrivacyGuard.label(this, e.getKey()) + "\n" + e.getKey();
+                String key = PrivacyGuard.label(this, e.getKey()) + "\n" + e.getKey();
+                // "Always block" mutes were invisible from this list (2026-09-27: Alibaba.com's
+                // camera + photos were muted and "it doesn't ask" looked like a guard bug).
+                final int quiet = PrivacyGuard.mutedMask(this, e.getKey()) & e.getValue();
+                if (quiet != 0) key += "\n\uD83D\uDD07 never asks: " + PrivacyGuard.permWords(quiet);
                 rows.add(key); pkgByRow.put(key, e.getKey());
             }
             empty.setText(rows.isEmpty()
@@ -2507,23 +2526,38 @@ public class SettingsActivity extends Activity {
             }
             shown++;
             final android.widget.CheckBox cb = new android.widget.CheckBox(this);
-            cb.setText(bname);
-            cb.setChecked((PrivacyGuard.maskOf(this, pkg) & bit) != 0);
+            final boolean guarded = (PrivacyGuard.maskOf(this, pkg) & bit) != 0;
+            final boolean quiet = guarded && PrivacyGuard.muted(this, pkg, bit);
+            String text = quiet ? bname + "  \u2014 always block, never asks" : bname;
+            // Android's own "Select photos" limit: the framework lets the user-selected photos
+            // through the guard (they are exactly what the user chose), so say so here.
+            if (guarded && bit == PrivacyGuard.MEDIA_VISUAL && PrivacyGuard.partialPhotoAccess(this, pkg)) {
+                text += "  \u2014 Android \u201cselect photos\u201d is on: the chosen photos pass";
+            }
+            cb.setText(text);
+            cb.setChecked(guarded);
             cb.setOnCheckedChangeListener((v, on) -> {
                 final int cur = PrivacyGuard.maskOf(this, pkg);
                 PrivacyGuard.setMask(getApplicationContext(), pkg, on ? (cur | bit) : (cur & ~bit));
                 if (onChange != null) onChange.run();
             });
-            // Long-press a blocked item to temporarily allow just it for 5 / 10 minutes.
+            // Long-press a blocked item: allow just it for 5 / 10 minutes, or flip its
+            // per-permission "Always block" (quiet) without touching the app's other permissions.
             cb.setOnLongClickListener(v -> {
                 if ((PrivacyGuard.maskOf(this, pkg) & bit) == 0) return false;   // not blocked
                 final long[] ch = PrivacyGuard.ALLOW_CHOICES_MS;
-                final String[] labels = new String[ch.length];
-                for (int k = 0; k < ch.length; k++) labels[k] = (ch[k] / 60000) + " minutes";
+                final boolean m = PrivacyGuard.muted(this, pkg, bit);
+                final String[] labels = new String[ch.length + 1];
+                for (int k = 0; k < ch.length; k++) labels[k] = "Allow for " + (ch[k] / 60000) + " minutes";
+                labels[ch.length] = m ? "Ask again (stop Always block)" : "Always block: never ask for it";
                 new android.app.AlertDialog.Builder(this)
-                        .setTitle("Allow " + bname + " for")
+                        .setTitle(bname)
                         .setItems(labels, (d, which) -> {
-                            PrivacyGuard.allowFor(getApplicationContext(), pkg, bit, ch[which]);
+                            if (which < ch.length) PrivacyGuard.allowFor(getApplicationContext(), pkg, bit, ch[which]);
+                            else {
+                                PrivacyGuard.setMuted(getApplicationContext(), pkg, bit, !m);
+                                cb.setText(!m ? bname + "  \u2014 always block, never asks" : bname);
+                            }
                             if (onChange != null) onChange.run();
                         })
                         .show();
@@ -2546,7 +2580,7 @@ public class SettingsActivity extends Activity {
         }
 
         final android.widget.CheckBox mute = new android.widget.CheckBox(this);
-        mute.setText("Always block: no \u201cblocked\u201d alerts for this app");
+        mute.setText("Always block everything: no \u201cblocked\u201d alerts for this app (long-press an item for just one)");
         mute.setChecked(PrivacyGuard.muted(this, pkg));
         mute.setOnCheckedChangeListener((v, on) ->
                 PrivacyGuard.setMuted(getApplicationContext(), pkg, on));
@@ -2636,6 +2670,98 @@ public class SettingsActivity extends Activity {
         return row;
     }
 
+    // ---------- charge separation ----------
+    private static final String[] CHARGESEP_OFF_NAMES = {"Never", "After 2 min", "After 5 min", "After 15 min", "After 30 min"};
+    private static final int[] CHARGESEP_OFF_MIN = {0, 2, 5, 15, 30};
+    private static final String[] CHARGESEP_MIN_NAMES = {"Always", "Above 10%", "Above 20%", "Above 30%", "Above 50%"};
+    private static final int[] CHARGESEP_MIN_LEVEL = {-1, 10, 20, 30, 50};
+
+    private void chargeSepSection(LinearLayout root) {
+        header(root, "Charge separation");
+        note(root, "Runs the phone straight off the charger with the battery charger switched off "
+                + "(what the stock ROM calls charge separation, elsewhere \"bypass charging\"). The "
+                + "battery neither charges nor drains, so a long plugged-in session adds no heat and "
+                + "no wear. The status bar keeps showing \"Charging\" \u2014 that is the charger port "
+                + "being on, not the battery filling. Turn it on by hand with the Charge separation "
+                + "Quick Settings tile, or let game mode do it.");
+        {
+            LinearLayout row = labelledRow(root, "Separate while gaming");
+            Switch sw = new Switch(this);
+            sw.setChecked(Prop.getBool(ChargeSeparation.PROP_GAME, true));
+            sw.setOnCheckedChangeListener((v, on) -> {
+                Prop.set(ChargeSeparation.PROP_GAME, on ? "1" : "0");
+                ChargeSeparation.reevaluate();
+                bumpRev();
+            });
+            row.addView(sw);
+        }
+        note(root, "Charge separation comes on by itself while a game with Performance mode is in "
+                + "the foreground (the same trigger as the fan and GPU boosts above) and goes away "
+                + "when you leave the game.");
+        {
+            LinearLayout row = labelledRow(root, "Turn off when the screen is off");
+            final Spinner sp = new Spinner(this);
+            sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                    CHARGESEP_OFF_NAMES));
+            sp.setSelection(idxOf(CHARGESEP_OFF_MIN,
+                    Prop.getInt(ChargeSeparation.PROP_SCREENOFF_MIN, ChargeSeparation.DEFAULT_SCREENOFF_MIN)));
+            sp.setOnItemSelectedListener(new SimpleSel() {
+                public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    Prop.set(ChargeSeparation.PROP_SCREENOFF_MIN, Integer.toString(CHARGESEP_OFF_MIN[pos]));
+                    ChargeSeparation.reevaluate();
+                    bumpRev();
+                }
+            });
+            row.addView(sp);
+        }
+        {
+            LinearLayout row = labelledRow(root, "Only while the battery is");
+            final Spinner sp = new Spinner(this);
+            sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                    CHARGESEP_MIN_NAMES));
+            sp.setSelection(idxOf(CHARGESEP_MIN_LEVEL,
+                    Prop.getInt(ChargeSeparation.PROP_MIN_LEVEL, ChargeSeparation.DEFAULT_MIN_LEVEL)));
+            sp.setOnItemSelectedListener(new SimpleSel() {
+                public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                    Prop.set(ChargeSeparation.PROP_MIN_LEVEL, Integer.toString(CHARGESEP_MIN_LEVEL[pos]));
+                    ChargeSeparation.reevaluate();
+                    bumpRev();
+                }
+            });
+            row.addView(sp);
+        }
+        note(root, "Separation is a session thing, like on the stock ROM: it is off after a reboot, "
+                + "and by default it lets go a few minutes after the screen turns off so a phone "
+                + "left on the charger overnight still fills up. Below the battery level you pick "
+                + "here the charger is let back on until the battery is above it again. Settings > "
+                + "Battery > Charging control still works: its limit now truly parks the battery "
+                + "at the chosen level instead of letting the phone drain on the charger.");
+    }
+
+    // ---------- touch sampling while gaming ----------
+    private static final String PROP_GAME_TOUCH = "persist.sys.rm.gametouch.rate";
+    private static final String[] GAME_TOUCH_NAMES = {"Off (180 Hz)", "300 Hz", "360 Hz", "720 Hz"};
+    private static final int[] GAME_TOUCH_VAL = {0, 2, 3, 4};
+
+    private void gameTouchRateRow(LinearLayout root) {
+        LinearLayout row = labelledRow(root, "Touch sampling while gaming");
+        final Spinner sp = new Spinner(this);
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                GAME_TOUCH_NAMES));
+        sp.setSelection(idxOf(GAME_TOUCH_VAL, Prop.getInt(PROP_GAME_TOUCH, 4)));
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Prop.set(PROP_GAME_TOUCH, Integer.toString(GAME_TOUCH_VAL[pos]));
+            }
+        });
+        row.addView(sp);
+        note(root, "The touch panel normally reports at 180 Hz. While a Performance-mode game is in "
+                + "the foreground the panel is switched to this rate and into its own game mode "
+                + "(the stock ROM's \"960 Hz\" gear is this 720 Hz setting), and back to 180 Hz when "
+                + "you leave. Higher rates cost a little battery and only matter for games that "
+                + "read touches every frame.");
+    }
+
     private void chargeCoolSwitch(LinearLayout root, String title) {
         LinearLayout row = labelledRow(root, title);
         Switch sw = new Switch(this);
@@ -2722,9 +2848,15 @@ public class SettingsActivity extends Activity {
 
     /** Duration picker in minutes; writes the value (not the index) so the prop reads plainly. */
     private void minutesRow(LinearLayout root, String title, final String key, final int def) {
-        final int[] mins = {5, 10, 15, 20, 30, 45, 60, 90, 120};
+        minutesRow(root, title, key, def, new int[] {5, 10, 15, 20, 30, 45, 60, 90, 120});
+    }
+
+    private void minutesRow(LinearLayout root, String title, final String key, final int def,
+            final int[] mins) {
         String[] names = new String[mins.length];
-        for (int i = 0; i < mins.length; i++) names[i] = mins[i] + " min";
+        for (int i = 0; i < mins.length; i++) {
+            names[i] = mins[i] % 60 == 0 && mins[i] >= 60 ? (mins[i] / 60) + " h" : mins[i] + " min";
+        }
 
         LinearLayout row = labelledRow(root, title);
         Spinner sp = new Spinner(this);
@@ -2823,6 +2955,70 @@ public class SettingsActivity extends Activity {
     }
 
     /** Small caption under a control. */
+    // XDA #250 (NX123Dos): the two Google pieces MinimalGApps/microG users keep asking about,
+    // with a plain "installed / missing" verdict and a button to the right place. Speech
+    // Services is a normal Play app (it is what the on-device recognizer overlay points at, so
+    // without it the microphone in Maps/Waze/Gemini voice typing is silent). Android Auto is
+    // NOT a Play install: it must be a privileged system app to project, so a Play copy sits in
+    // /data/app and never shows up in a car (#163) -- the fix is the add-on module from the
+    // thread's pCloud Modules folder (FullGApps ships it baked).
+    private static final String PKG_SPEECH = "com.google.android.tts";
+    private static final String PKG_GEARHEAD = "com.google.android.projection.gearhead";
+    private static final String XDA_THREAD =
+            "https://xdaforums.com/t/rom-17-0-nx809j-unofficial-experimental-evolutionx-12-1-25-08-2026.4799534/";
+
+    private void addonsSection(LinearLayout root) {
+        addonRow(root, "Speech Services by Google", PKG_SPEECH, false);
+        addonRow(root, "Android Auto", PKG_GEARHEAD, true);
+        note(root, "Speech Services is what the microphone button in Maps, Waze and voice typing "
+                + "talks to; MinimalGApps does not ship it, so install it from Play if the mic "
+                + "stays silent in those apps.\n\nAndroid Auto only works as a system app. "
+                + "FullGApps has it built in; on MinimalGApps and microG install the add-on "
+                + "module from the thread's Modules folder \u2014 a copy installed from Play "
+                + "will never appear in the car.");
+    }
+
+    private void addonRow(LinearLayout root, String title, String pkg, boolean needsSystem) {
+        ApplicationInfo ai = null;
+        try {
+            ai = getPackageManager().getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+            if (!ai.enabled || (ai.flags & ApplicationInfo.FLAG_INSTALLED) == 0) ai = null;
+        } catch (PackageManager.NameNotFoundException e) { /* missing */ }
+        final boolean installed = ai != null;
+        final boolean system = installed && (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+        String ver = "";
+        if (installed) {
+            try {
+                ver = " " + getPackageManager().getPackageInfo(pkg, 0).versionName;
+            } catch (PackageManager.NameNotFoundException e) { /* ignore */ }
+        }
+        final String state;
+        if (!installed) state = "not installed";
+        else if (needsSystem && !system) state = "installed from Play \u2014 will not work, needs the module";
+        else state = (system ? "installed (system)" : "installed") + ver;
+
+        LinearLayout row = labelledRow(root, title + ": " + state);
+        final Button go = new Button(this);
+        final boolean ok = installed && (!needsSystem || system);
+        if (needsSystem) {
+            go.setText(ok ? "Thread" : "Get module");
+            go.setOnClickListener(v -> openUrl(XDA_THREAD));
+        } else {
+            go.setText(ok ? "Play" : "Get on Play");
+            go.setOnClickListener(v -> openUrl("https://play.google.com/store/apps/details?id=" + pkg));
+        }
+        row.addView(go);
+    }
+
+    private void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Exception e) {
+            Toast.makeText(this, "No app can open " + url, Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void note(LinearLayout root, String text) {
         TextView tv = new TextView(this);
         tv.setText(text);
