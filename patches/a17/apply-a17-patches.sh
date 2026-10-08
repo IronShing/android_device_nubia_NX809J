@@ -1,5 +1,5 @@
 #!/bin/bash
-# EvolutionX 12 (cnb / Android 17) tree: re-apply the few NX809J fixes that live in
+# EvolutionX 12.3 (cnb / Android 17) tree: re-apply the few NX809J fixes that live in
 # shared repos we did NOT fork (everything else is a fork pinned by manifest/nx809j.xml).
 # Run after every `repo sync`. Idempotent: already-applied patches are skipped.
 set -u
@@ -24,7 +24,7 @@ apply() {  # $1 = repo path (rel to TOP)   $2 = patch subdir
   done
 }
 
-apply build/make                        build_make                        # sign A17 target-files (ZipFile)
+# build/make signing fix: upstream in EvolutionX 12.3 (2fa923193d), no longer patched here.
 apply device/qcom/sepolicy              device_qcom_sepolicy              # gppservice -> gmscore_app/system_app
 apply device/qcom/sepolicy_vndr/sm8750  device_qcom_sepolicy_vndr_sm8750  # canoe genfs_contexts slash
 apply hardware/qcom-caf/common          hardware_qcom-caf_common          # canoe in UM_6_6_FAMILY

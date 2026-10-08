@@ -1,4 +1,4 @@
-From 491510c0d14b545759329ca03766929b1b082674 Mon Sep 17 00:00:00 2001
+From 8231bc7d67551fe7830270d0448c1d74220af539 Mon Sep 17 00:00:00 2001
 From: John <john@primaryautotrd.com>
 Date: Sat, 19 Sep 2026 23:19:24 +0300
 Subject: [PATCH] NfcNci: add Type-F to the eSE F route even when the EE

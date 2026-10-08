@@ -81,9 +81,6 @@ vendor.audio.compress_capture.enabled=true
 vendor.audio.compress_capture.aac=true
 vendor.audio.hal.aidl.enabled=true
 ro.usb.uvc.enabled=true
-# A17 SPIKE (debug build only -- NEVER ship): skip the adb RSA authorisation handshake
-# so adb works before/without any UI to accept the host key.
-ro.adb.secure=0
 ro.oem_unlock_supported=1
 ro.surface_flinger.has_wide_color_display=true
 ro.surface_flinger.has_HDR_display=true
@@ -107,8 +104,6 @@ vendor.display.disable_rounded_corner=1
 ro.vendor.mfv.statusbarcolor=1
 ro.vendor.config.notification_sound_2=Universe.ogg
 ro.vendor.mifavor.mfvkeyguard.type=2
-# A17 SPIKE: USB comes up in adb mode on first boot instead of charging-only.
-persist.sys.usb.config=adb
 persist.sys.usb.menu=miFavor
 persist.sys.usb.dp=true
 vendor.camera.aux.packagelist=com.android.camera,com.zte.burntest.camera,org.codeaurora.snapcam,com.zte.zftdoctor

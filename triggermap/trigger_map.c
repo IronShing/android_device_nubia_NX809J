@@ -63,6 +63,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <linux/input.h>
@@ -89,9 +90,24 @@
 #define GATE_POLL_MS 250
 #define MERGE_MAX_FAILS 3
 
+// Deactivation debounce. GameSpace bounces persist.sys.power_mode_perf -- observed
+// live (10-05, kingdom's log) doing 0->1->0 within 0.3-0.7 s while a game stayed in
+// front. Tearing the grabbing uinput device down+up on each bounce makes InputFlinger
+// re-enumerate (EventHub "Removing device trigger_map due to epoll hang-up") and drops
+// the triggers for the rebuild window. So once "game in front" drops we hold the engine
+// up for this long; a flap back within the window cancels the teardown. A real game
+// exit (perf stays 0, the ~25 s swings in the same log) still releases promptly.
+#define DEACTIVATE_GRACE_MS 2000
+
 static int g_max_x = 1215;   // sensible RM692H5 fallback until probed
 static int g_max_y = 2687;
 static volatile sig_atomic_t g_stop = 0;
+
+static long now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
 static void on_term(int sig) { (void)sig; g_stop = 1; }
 
@@ -585,6 +601,9 @@ int main(void) {
     // parked on legacy until the daemon is restarted (trig_map toggle) instead of
     // retrying every GATE_POLL_MS and flooding the log.
     int merge_fails = 0;
+    // Monotonic ms at which "want_active" first dropped while the engine was up;
+    // 0 = no teardown pending. See DEACTIVATE_GRACE_MS.
+    long off_since = 0;
 
     for (;;) {
         if (g_stop) break;
@@ -595,17 +614,27 @@ int main(void) {
         int map_on       = prop_bool("persist.sys.rm.trig_map", 0);
         int want_active  = merge_wanted && game_front && map_on;
 
-        if (want_active && !m.active) {
-            if (merged_activate(&m)) {
-                merge_fails = 0;
-            } else if (++merge_fails >= MERGE_MAX_FAILS) {
-                ALOGE("merged engine failed %d times -- parking on the legacy engine", merge_fails);
-                merge_wanted = 0;
-            } else {
-                merge_wanted = 0;   // legacy device covers this session
+        if (want_active) {
+            off_since = 0;                  // a pending teardown is cancelled by the flap back
+            if (!m.active) {
+                if (merged_activate(&m)) {
+                    merge_fails = 0;
+                } else if (++merge_fails >= MERGE_MAX_FAILS) {
+                    ALOGE("merged engine failed %d times -- parking on the legacy engine", merge_fails);
+                    merge_wanted = 0;
+                } else {
+                    merge_wanted = 0;   // legacy device covers this session
+                }
             }
-        } else if (!want_active && m.active) {
-            merged_deactivate(&m, game_front ? "mapping off" : "game left");
+        } else if (m.active) {
+            // Debounced teardown: keep the grabbing device up (still forwarding the
+            // panel + triggers) until the game has stayed gone for the grace window.
+            long now = now_ms();
+            if (off_since == 0) off_since = now;
+            if (now - off_since >= DEACTIVATE_GRACE_MS) {
+                merged_deactivate(&m, game_front ? "mapping off" : "game left");
+                off_since = 0;
+            }
         }
         if (!merge_wanted && legacy_ufd < 0) {
             legacy_ufd = legacy_uinput_create();

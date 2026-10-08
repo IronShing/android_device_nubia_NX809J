@@ -241,8 +241,16 @@ final class PrivacyGuard {
     // ms == SCREEN_BLOCK is the opposite rule ("always block on this screen"): stays guarded and
     // the prompt is skipped on that screen only (WhatsApp's call screen probing location on
     // every call, 2026-09-19), while the same ask elsewhere in the app still prompts.
+    // ms == SCREEN_TOUCH is the touch-bound rule ("only while I'm touching this screen"): the
+    // framework passes the op only while this activity is focused AND a finger is on the panel
+    // (WhatsApp hold-to-record voice notes, 2026-10-02) - a silent grab with no finger down
+    // stays guarded. Published separately as {@link #TOUCH_SETTING} "pkg/cls:bits,..." because
+    // it never flips the guard mask (no uid-mode-change event -> a recording that began under a
+    // finger survives lift-off, so swipe-to-lock keeps working).
     private static final String KEY_AUTO = "auto:";
     static final long SCREEN_BLOCK = -1L;
+    static final long SCREEN_TOUCH = -2L;
+    static final String TOUCH_SETTING = "rm_privacy_touch";
     static final String EXTRA_CLS = "cls";
 
     /** Ops lifted for an AA-allowed package while Android Auto (car mode) is connected. */
@@ -474,9 +482,37 @@ final class PrivacyGuard {
         final SharedPreferences.Editor ed = prefs(ctx).edit();
         if (ms != 0) ed.putLong(autoKey(pkg, cls, bit), ms); else ed.remove(autoKey(pkg, cls, bit));
         ed.apply();
-        Log.i(TAG, (ms > 0 ? "screen rule " : ms == 0 ? "screen rule removed " : "screen block rule ")
+        Log.i(TAG, (ms > 0 ? "screen rule " : ms == 0 ? "screen rule removed "
+                : ms == SCREEN_TOUCH ? "screen touch rule " : "screen block rule ")
                 + pkg + "/" + cls + " " + permWord(bit) + (ms > 0 ? " " + (ms / 60000) + " min" : ""));
         if (ms > 0) checkAutoAllow(ctx, sTop);
+        else apply(ctx);                                   // touch rules live in TOUCH_SETTING
+    }
+
+    /** "pkg/cls:bits,..." of every touch-bound rule whose permission is still guarded. */
+    private static String touchRules(Context ctx) {
+        final StringBuilder sb = new StringBuilder();
+        final SharedPreferences p = prefs(ctx);
+        final Map<String, Integer> masks = rules(ctx);
+        final Map<String, Integer> perScreen = new TreeMap<>();
+        for (Map.Entry<String, ?> e : p.getAll().entrySet()) {
+            if (!e.getKey().startsWith(KEY_AUTO) || !(e.getValue() instanceof Long)
+                    || (Long) e.getValue() != SCREEN_TOUCH) continue;
+            final String rest = e.getKey().substring(KEY_AUTO.length());
+            final int colon = rest.lastIndexOf(':'), slash = rest.indexOf('/');
+            if (colon < 0 || slash < 0 || slash > colon) continue;
+            final int bit;
+            try { bit = Integer.parseInt(rest.substring(colon + 1)); } catch (NumberFormatException x) { continue; }
+            final Integer mask = masks.get(rest.substring(0, slash));
+            if (mask == null || (mask & bit) == 0) continue;   // permission not guarded anyway
+            final String screen = rest.substring(0, colon);
+            perScreen.put(screen, (perScreen.containsKey(screen) ? perScreen.get(screen) : 0) | bit);
+        }
+        for (Map.Entry<String, Integer> e : perScreen.entrySet()) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(e.getKey()).append(':').append(e.getValue());
+        }
+        return sb.toString();
     }
 
     /** {cls, bit, ms} rows for one package, for the editor. */
@@ -895,6 +931,12 @@ final class PrivacyGuard {
             Settings.Secure.putString(ctx.getContentResolver(), SETTING, want);
             Log.i(TAG, "published: " + (want.isEmpty() ? "(none)" : want));
         }
+        final String wantTouch = enabled() ? touchRules(ctx) : "";
+        final String haveTouch = Settings.Secure.getString(ctx.getContentResolver(), TOUCH_SETTING);
+        if (!wantTouch.equals(haveTouch == null ? "" : haveTouch)) {
+            Settings.Secure.putString(ctx.getContentResolver(), TOUCH_SETTING, wantTouch);
+            Log.i(TAG, "published touch rules: " + (wantTouch.isEmpty() ? "(none)" : wantTouch));
+        }
 
         final AlarmManager am = ctx.getSystemService(AlarmManager.class);
         final PendingIntent pi = PendingIntent.getBroadcast(ctx, 0,
@@ -1109,8 +1151,18 @@ final class PrivacyGuard {
         if (top != null && top.getPackageName().equals(pkg)) cls = top.getClassName();
         else if (pkg.equals(sPromptPkg)) cls = sPromptCls;
         if (cls != null) {
-            if (autoAllowMs(ctx, pkg, cls, bit) == SCREEN_BLOCK) {   // "always block on this screen"
+            final long rule = autoAllowMs(ctx, pkg, cls, bit);
+            if (rule == SCREEN_BLOCK) {   // "always block on this screen"
                 Log.i(TAG, "screen block rule: quiet " + pkg + "/" + cls + " " + what);
+                return;
+            }
+            // "Only while I'm touching this screen": the framework passes the op while a finger
+            // is down, so an attempt that still got blocked here is a grab with no finger down --
+            // exactly what the rule says to block. The user already decided this screen; asking
+            // again only invites "Always block on this screen", which replaced the touch rule and
+            // killed hold-to-record (WhatsApp voice-note playback pokes the mic, 2026-10-06).
+            if (rule == SCREEN_TOUCH) {
+                Log.i(TAG, "screen touch rule, no finger: quiet " + pkg + "/" + cls + " " + what);
                 return;
             }
             final Long lastPrompt = sLastPrompted.get(throttleKey);

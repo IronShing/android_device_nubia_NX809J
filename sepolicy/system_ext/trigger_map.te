@@ -16,6 +16,10 @@ init_daemon_domain(trigger_map)
 # Read the SAR trigger nodes + probe the real touchscreen coordinate range.
 # Standard evdev nodes are input_device; EVIOCGNAME/EVIOCGABS need ioctl.
 allow trigger_map input_device:chr_file { open read ioctl };
+# The merged engine finds the panel + SAR nodes by name, so it lists /dev/input (the legacy
+# engine opened fixed paths). Without this the daemon exits 1 and init restarts it every 5 s
+# (XDA #293, 20261001/20261002 kits: triggers dead).
+allow trigger_map input_device:dir r_dir_perms;
 
 # Create + drive the uinput virtual touchscreen.
 allow trigger_map uhid_device:chr_file { open read write ioctl };

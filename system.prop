@@ -6,10 +6,11 @@
 # ro.adb.secure=0 / persist.sys.usb.config=adb used to live here unconditionally; they are
 # now gated behind NX809J_TEST_ADB in device.mk (2026-09-06).
 # Fold the kernel ring buffer into logcat so a vendor/HAL crash and its kernel context
-# land in one timeline, and persist logs across a bootloop.
+# land in one timeline.
 ro.logd.kernel=true
-persist.logd.logpersistd=logcatd
-persist.logd.logpersistd.size=64
+# Persistent logcat (/data/misc/logd) is OFF by default since 2026-10-04 (XDA #307, NX123Dos:
+# it was an A17 bring-up diagnostics setting that shipped in every kit since 08-25 and kept
+# writing to storage). RedMagic Control -> Capture log -> "Keep logs on storage" turns it on.
 
 # XDA #231 — wake-up jitter. SurfaceFlinger's display-power timer keeps the panel at the
 # policy maximum for N ms after every setPowerMode (screen on / doze→on) and clears layer
@@ -17,3 +18,10 @@ persist.logd.logpersistd.size=64
 # leaves it unset (nullopt = no timer); Pixels ship 1000. System side on purpose: the
 # shipped /vendor is the donor image, vendor.prop edits never reach the device.
 ro.surface_flinger.set_display_power_timer_ms=1000
+
+# Brightness slider: the panel's backlight->nits curve (displayconfig screenBrightnessMap,
+# 0.47 -> 170 nits, 0.858 -> 655 nits) is already perceptual. Android's slider adds its own HLG
+# gamma on top, so the two stacked: 87% slider = 130 nits (logged 2026-10-08), the last ~15%
+# jumped to 655 (XDA #337 shaj10). Use the existing SettingsLib switch for already
+# gamma-corrected backlights: linear slider over the panel's own curve.
+sys.brightness.disable_gamma_conversion=true

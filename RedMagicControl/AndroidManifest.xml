@@ -3,6 +3,7 @@
     package="com.nubia.rmcontrol"
     android:sharedUserId="android.uid.system">
 
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- WAKE_LOCK (normal perm): required to hold a WifiLock for the game-mode
          max-wifi boost (WifiServiceImpl.acquireWifiLock enforces WAKE_LOCK) -->
@@ -160,6 +161,11 @@
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen" />
 
         <service android:name=".TouchpadTile" android:label="@string/tile_touchpad" android:icon="@drawable/ic_touchpad"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <!-- Media output picker (pins media to a chosen device) + current device as subtitle. -->
+        <service android:name=".AudioOutputTile" android:label="@string/tile_audio_output" android:icon="@drawable/ic_audio_output"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" android:exported="true">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>

@@ -66,6 +66,30 @@ final class Rkp {
     // Nothing to do at boot: init re-fires rkp.rc from the persisted property long before
     // BOOT_COMPLETED, so rkpdapp's own BootReceiver already stores the right url.
 
+    private static final String PREF = "rmcontrol";
+    private static final String KEY_DEFAULTED = "rkp_defaulted_v1";
+
+    /**
+     * RKP is default-ON since 2026-10-05: without provisioned attestation keys the keystore throws
+     * -74 ATTESTATION_KEYS_NOT_PROVISIONED and Play Integrity fails every verdict including BASIC
+     * (XDA #306/#312). Turn it on once, the first boot after the update; the user can still switch
+     * it off afterwards and that choice sticks (persist.sys.rm.rkp + this flag).
+     */
+    static void ensureDefaultedOn(Context ctx) {
+        try {
+            final android.content.SharedPreferences p =
+                    ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+            if (p.getBoolean(KEY_DEFAULTED, false)) return;        // already decided once
+            p.edit().putBoolean(KEY_DEFAULTED, true).apply();
+            if (!isEnabled()) {
+                Log.i(TAG, "RKP: enabling by default (first boot after update)");
+                apply(ctx, true);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "RKP: default-on check failed: " + t);
+        }
+    }
+
     static void apply(Context ctx, boolean on) {
         // Writing our own property is all the app may do: init picks it up from rkp.rc and does
         // the remote_provisioning.* setprops. system_app is neverallowed from touching

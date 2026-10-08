@@ -122,18 +122,36 @@ public class PrivacyPromptActivity extends Activity {
         body.addView(mins);
 
         final CheckBox always = new CheckBox(this);
+        final CheckBox touch = new CheckBox(this);
         final CheckBox alwaysBlock = new CheckBox(this);
+        // Touch-bound rule only for the sensors an app grabs at the moment of use (camera, mic);
+        // location & co. are read with no finger anywhere near.
+        final boolean touchable = cls != null && (bits & (PrivacyGuard.CAMERA | PrivacyGuard.MIC)) != 0;
         if (cls != null) {
             final String screen = PrivacyGuard.screenLabel(this, pkg, cls);
             always.setText("Always allow on this screen (" + screen
                     + ") for the chosen time, without asking");
             always.setPadding(0, dp(8), 0, 0);
             body.addView(always);
+            if (touchable) {
+                touch.setText("Only while I'm touching this screen (" + screen
+                        + ") \u2014 hold-to-record buttons; a grab with no finger down stays blocked");
+                body.addView(touch);
+            }
             alwaysBlock.setText("Always block on this screen (" + screen + "), without asking");
             body.addView(alwaysBlock);
-            // One or the other for this screen.
-            always.setOnCheckedChangeListener((v, on) -> { if (on) alwaysBlock.setChecked(false); });
-            alwaysBlock.setOnCheckedChangeListener((v, on) -> { if (on) always.setChecked(false); });
+            // One rule per screen.
+            always.setOnCheckedChangeListener((v, on) -> { if (on) { alwaysBlock.setChecked(false); touch.setChecked(false); } });
+            touch.setOnCheckedChangeListener((v, on) -> { if (on) { always.setChecked(false); alwaysBlock.setChecked(false); } });
+            alwaysBlock.setOnCheckedChangeListener((v, on) -> { if (on) { always.setChecked(false); touch.setChecked(false); } });
+            // Show the screen's current rule ticked, so "Always block on this screen" visibly
+            // REPLACES it instead of silently overwriting e.g. the voice-note touch rule.
+            int ruleBit = 1;
+            while (ruleBit != 0 && (bits & ruleBit) == 0) ruleBit <<= 1;
+            final long curRule = ruleBit == 0 ? 0 : PrivacyGuard.autoAllowMs(this, pkg, cls, ruleBit);
+            if (curRule == PrivacyGuard.SCREEN_TOUCH && touchable) touch.setChecked(true);
+            else if (curRule == PrivacyGuard.SCREEN_BLOCK) alwaysBlock.setChecked(true);
+            else if (curRule > 0) always.setChecked(true);
         }
 
         mDialog = new AlertDialog.Builder(this, theme)
@@ -143,6 +161,12 @@ public class PrivacyPromptActivity extends Activity {
                     final long ms = mins.getCheckedRadioButtonId() * 60000L;
                     for (int b = 1; b != 0 && b <= bits; b <<= 1) {
                         if ((bits & b) == 0) continue;
+                        if (touchable && touch.isChecked()) {
+                            // Rule only: the framework passes the op while a finger is down, so
+                            // no timed allowance (that would un-guard the silent grabs too).
+                            PrivacyGuard.setAutoAllow(this, pkg, cls, b, PrivacyGuard.SCREEN_TOUCH);
+                            continue;
+                        }
                         if (cls != null && always.isChecked()) PrivacyGuard.setAutoAllow(this, pkg, cls, b, ms);
                         PrivacyGuard.allowFor(this, pkg, b, ms);
                     }

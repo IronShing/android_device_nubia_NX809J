@@ -1,4 +1,4 @@
-From 19e0cb4060d30c82858e908897a9b3cbd8b60ada Mon Sep 17 00:00:00 2001
+From c7de44d0f4e271d27509e1cbba310486853120dc Mon Sep 17 00:00:00 2001
 From: John <john@primaryautotrd.com>
 Date: Sat, 19 Sep 2026 23:19:24 +0300
 Subject: [PATCH] SecureElement: never block the main thread on a

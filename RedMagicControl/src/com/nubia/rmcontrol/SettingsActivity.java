@@ -1814,13 +1814,33 @@ public class SettingsActivity extends Activity {
         now.setOnClickListener(v -> LogCapture.captureAsync(this, null));
         nowRow.addView(now);
 
+        LinearLayout clearRow = labelledRow(root, "Clear logs now");
+        Button clear = new Button(this);
+        clear.setText("Clear");
+        clear.setOnClickListener(v -> {
+            LogCapture.clearAll(this);
+            android.widget.Toast.makeText(this, "Logs cleared", android.widget.Toast.LENGTH_SHORT).show();
+        });
+        clearRow.addView(clear);
+
         note(root, "Long-press power \u2192 Capture log saves the full system log (every buffer, "
                 + "roughly the last 15\u201330 minutes) plus device properties to "
                 + "Download/RMControl-logs and posts a notification with a Share button, so a "
                 + "bug can be reported right after it happens without adb or root. The ten most "
                 + "recent captures are kept. The switch only hides the power-menu item; Capture "
-                + "here always works. Logs can contain app names, notification text and "
-                + "similar \u2014 look through one before posting it publicly.");
+                + "here always works. \"Clear\" wipes the in-memory log and every saved capture "
+                + "(and any stored logs), so the next capture starts fresh. Logs can contain app "
+                + "names, notification text and similar \u2014 look through one before posting it publicly.");
+
+        LinearLayout keep = labelledRow(root, "Keep logs on storage (for bug reports)");
+        final Switch ks = new Switch(this);
+        ks.setChecked(LogPersist.enabled());
+        ks.setOnCheckedChangeListener((v, on) -> LogPersist.set(on));
+        keep.addView(ks);
+        note(root, "Off (default): logs live only in memory, like stock Android \u2014 no constant "
+                + "writes to storage. On: the log is also written to storage continuously (up to "
+                + "about 128 MB, rotated), so it survives a reboot or bootloop. Turn it on only "
+                + "while chasing a problem; switching it off deletes the stored logs.");
     }
 
     private void settingsResetSection(LinearLayout root) {
@@ -2637,6 +2657,10 @@ public class SettingsActivity extends Activity {
             rule.setText(ms == PrivacyGuard.SCREEN_BLOCK
                     ? "Always block " + PrivacyGuard.permWord(bit) + " on the "
                             + PrivacyGuard.screenLabel(this, pkg, cls) + " screen, quietly \u2014 tap to forget"
+                    : ms == PrivacyGuard.SCREEN_TOUCH
+                    ? "Allow " + PrivacyGuard.permWord(bit) + " on the "
+                            + PrivacyGuard.screenLabel(this, pkg, cls)
+                            + " screen only while touching it \u2014 tap to forget"
                     : "Always allow " + PrivacyGuard.permWord(bit) + " on the "
                             + PrivacyGuard.screenLabel(this, pkg, cls) + " screen for " + (ms / 60000)
                             + " min \u2014 tap to forget");

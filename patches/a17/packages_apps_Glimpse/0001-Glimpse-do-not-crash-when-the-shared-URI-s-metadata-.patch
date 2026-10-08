@@ -1,4 +1,4 @@
-From 858637c52e60ef5c9a4c4f7b66e190965edec8e0 Mon Sep 17 00:00:00 2001
+From e06500958ef149f4d79307066f139c6bafe0a948 Mon Sep 17 00:00:00 2001
 From: John <john@primaryautotrd.com>
 Date: Thu, 1 Oct 2026 23:19:00 +0300
 Subject: [PATCH] Glimpse: do not crash when the shared URI's metadata cannot

@@ -293,12 +293,41 @@ on property:persist.sys.rm.chargecool.active=2
     write /sys/kernel/fan/fan_enable 1
     write /proc/driver/micropump/enable 1
 
-on property:persist.sys.rm.chargecool.active=0
-    write /sys/kernel/fan/fan_speed_level ${persist.sys.fan.level:-0}
-    write /proc/driver/micropump/enable ${persist.sys.cooling.level:-0}
-
+# Restore the user's / game mode's fan and pump when charge cooling ends. NOT via
+# ${persist.sys.fan.level}: these commands run in vendor_init, which may not READ rm_hw_prop
+# (system_internal_prop), so the expansion silently became the default 0 and switched the fan
+# OFF mid-game the moment charge separation stopped the charging (XDA #300: "fan did stop, had
+# to relaunch the app"; avc denied rm_hw_prop at that exact second). Init evaluates property
+# TRIGGERS itself, so one block per level replays the right value with no read at all.
 on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=0
+    write /sys/kernel/fan/fan_speed_level 0
     write /sys/kernel/fan/fan_enable 0
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=1
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 1
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=2
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 2
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=3
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 3
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=4
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 4
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.fan.level=5
+    write /sys/kernel/fan/fan_enable 1
+    write /sys/kernel/fan/fan_speed_level 5
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.cooling.level=0
+    write /proc/driver/micropump/enable 0
+
+on property:persist.sys.rm.chargecool.active=0 && property:persist.sys.cooling.level=1
+    write /proc/driver/micropump/enable 1
 
 # Charge separation (XDA #189). RedMagic Control publishes the EFFECTIVE state
 # (manual tile OR "during game mode" while persist.sys.power_mode_perf=1, minus its

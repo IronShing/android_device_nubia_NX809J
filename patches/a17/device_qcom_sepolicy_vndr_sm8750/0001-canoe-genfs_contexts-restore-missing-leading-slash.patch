@@ -1,4 +1,4 @@
-From 6791b00157627f3eb56d0e7324933a4f4be07044 Mon Sep 17 00:00:00 2001
+From 1d42b6d414a5f48418545f5779b7d514b2276b88 Mon Sep 17 00:00:00 2001
 From: EvoX12 Spike <spike@localhost>
 Date: Tue, 25 Aug 2026 01:00:45 +0300
 Subject: [PATCH] canoe: genfs_contexts: restore missing leading slash

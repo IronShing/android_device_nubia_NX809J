@@ -11,6 +11,7 @@
     <string name="tile_fan">Cooling Fan</string>
     <string name="tile_cooling">Liquid Cooling</string>
     <string name="tile_touchpad">Touchpad</string>
+    <string name="tile_audio_output">Audio output</string>
     <string name="touchpad_title">Phone as touchpad</string>
     <string name="trigger_map_title">Shoulder trigger mapping</string>
     <string name="tile_monitor_only">Monitor only</string>

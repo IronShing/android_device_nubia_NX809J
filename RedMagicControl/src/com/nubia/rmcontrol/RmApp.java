@@ -56,13 +56,20 @@ public class RmApp extends Application {
         // flipped persist.sys.power_mode_perf. No-op until a game triggers it.
         GamePerfWifi.start(this);
 
-        // RKP needs nothing at boot: init re-fires rkp.rc from persist.sys.rm.rkp before
-        // BOOT_COMPLETED, and rkpdapp's own BootReceiver picks the hostname up from there.
+        // RKP: on by default since 10-05 (no provisioned keys -> keystore -74 -> Play Integrity
+        // fails even BASIC). Enable once; the user can turn it off afterwards and that sticks.
+        Rkp.ensureDefaultedOn(this);
 
         // External-display caps ("no more than 1080p/60") re-applied on every connection.
         // No-op until the user sets a limit; must live here rather than in the panel because the
         // whole point is that it applies without anyone opening the app.
         ExternalDisplay.start(this);
+
+        // Touchpad + display-off tiles into the collapsed shade while a screen is plugged in.
+        ExtDisplayTiles.start(this);
+
+        // Persistent logcat went default-off (XDA #307): clear files left by older builds, once.
+        LogPersist.cleanupOnce(this);
 
         // Ship "Fast" as the animation-speed default. One-shot; the user's own choice wins
         // from then on.

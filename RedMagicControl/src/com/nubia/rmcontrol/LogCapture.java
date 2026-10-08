@@ -298,4 +298,58 @@ public class LogCapture {
             Log.w(TAG, "prune failed", t);
         }
     }
+
+    /**
+     * "Clear logs" (#318, NX123Dos): wipe the in-memory logcat ring buffers and delete every
+     * saved capture, so the next Capture starts clean instead of carrying lines from before a
+     * reboot. If persistent on-storage logging is on, its stored files are wiped too (logging
+     * keeps running). Runs on a worker thread — logcat -c is quick but the MediaStore sweep isn't.
+     */
+    static void clearAll(final Context ctx) {
+        new Thread(() -> {
+            // 1. in-memory ring buffers (uid system may clear logd)
+            try {
+                final Process p = new ProcessBuilder("logcat", "-b", "all", "-c")
+                        .redirectErrorStream(true).start();
+                p.getOutputStream().close();
+                try (InputStream in = p.getInputStream()) {
+                    final byte[] b = new byte[4096];
+                    while (in.read(b) > 0) { /* drain */ }
+                }
+                if (p.waitFor() != 0) Log.w(TAG, "logcat -c nonzero");
+            } catch (Exception e) {
+                Log.w(TAG, "clear buffers", e);
+            }
+
+            // 2. persistent on-storage logs, if any (keeps logging on when it was on)
+            try {
+                LogPersist.clearStored();
+            } catch (Throwable t) {
+                Log.w(TAG, "clear persistent", t);
+            }
+
+            // 3. saved captures: Settings' share cache + Download/RMControl-logs
+            try {
+                final File dir = shareDir(ctx);
+                final File[] fs = dir.listFiles((d, n) -> n.startsWith("log_") && n.endsWith(".txt"));
+                if (fs != null) for (File f : fs) f.delete();
+            } catch (Throwable ignore) { /* cache dir may not exist yet */ }
+            try {
+                final ContentResolver cr = ctx.getContentResolver();
+                try (Cursor c = cr.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        new String[] { MediaStore.Downloads._ID },
+                        MediaStore.Downloads.RELATIVE_PATH + "=? AND "
+                                + MediaStore.Downloads.DISPLAY_NAME + " LIKE 'log_%.txt'",
+                        new String[] { REL_PATH }, null)) {
+                    if (c != null) while (c.moveToNext()) {
+                        cr.delete(Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                String.valueOf(c.getLong(0))), null, null);
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "clear saved", t);
+            }
+            Log.i(TAG, "logs cleared");
+        }, "rmc-logclear").start();
+    }
 }

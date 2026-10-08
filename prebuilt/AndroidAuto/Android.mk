@@ -1,5 +1,6 @@
-# Google-signed Android Auto 17.4.663054 (174663054) as a product priv-app "cluster":
-# base.apk + the three config splits Play served this device (arm64-v8a, en, xxhdpi).
+# Google-signed Android Auto 17.8.663814 (178663814) as a product priv-app "cluster":
+# base.apk + the three config splits Play served this device (arm64-v8a, en, xxhdpi),
+# pulled 2026-10-07 from the Play-updated install on the NX809J (hashes matched on-device).
 # All four verified apksigner V3.1 signer sha256 1ca8dcc0... (Google, lineage from fdb00c43...).
 #
 # Why a cluster and not the vendor/gms stub: Play region-blocks AA for some accounts
