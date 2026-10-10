@@ -19,6 +19,8 @@
   Every repo with NX809J changes is a fork pinned here, so no patch step is needed for
   them. Only build/make, device/qcom/sepolicy{,_vndr/sm8750}, hardware/qcom-caf/common,
   Glimpse, SecureElement and modules/Nfc are left as patches (one commit each).
+  nx809j-evo123-1009 = the same work rebased on EvoX cnb of 2026-10-09 (LOS apps on lineage-24.0);
+  the plain nx809j-evo123 branches of those repos are the older 10-07 base, kept as they were.
   Branch convention: nx809j-evo12-cnb = rebased on Evolution-X's current cnb branch;
   nx809j-evo12 = on the LineageOS/AOSP project EvoX inherits unchanged.
 -->
@@ -61,7 +63,7 @@
   <!-- ===== Evolution X forks (rebased on cnb) ===== -->
   <remove-project name="frameworks_base" path="frameworks/base" />
   <project name="IronShing/frameworks_base"
-           path="frameworks/base" remote="github" revision="nx809j-evo123" groups="pdk-cw-fs,pdk-fs,sysui-studio" />
+           path="frameworks/base" remote="github" revision="nx809j-evo123-1009" groups="pdk-cw-fs,pdk-fs,sysui-studio" />
 
   <remove-project name="frameworks_av" path="frameworks/av" />
   <project name="IronShing/frameworks_av"
@@ -78,7 +80,7 @@
 
   <remove-project name="packages_apps_Settings" path="packages/apps/Settings" />
   <project name="IronShing/packages_apps_Settings"
-           path="packages/apps/Settings" remote="github" revision="nx809j-evo123" groups="pdk-fs,pdk-cw-tvc,sysui-studio" />
+           path="packages/apps/Settings" remote="github" revision="nx809j-evo123-1009" groups="pdk-fs,pdk-cw-tvc,sysui-studio" />
 
   <remove-project name="packages_apps_GameSpace" path="packages/apps/GameSpace" />
   <project name="IronShing/packages_apps_GameSpace"
@@ -86,7 +88,7 @@
 
   <remove-project name="lineage-sdk" path="lineage-sdk" />
   <project name="IronShing/lineage-sdk"
-           path="lineage-sdk" remote="github" revision="nx809j-evo123" />
+           path="lineage-sdk" remote="github" revision="nx809j-evo123-1009" />
 
   <remove-project name="vendor_extras" path="vendor/extras" />
   <project name="IronShing/vendor_extras"
@@ -94,7 +96,7 @@
 
   <remove-project name="vendor_evolution" path="vendor/lineage" />
   <project name="IronShing/android_vendor_lineage"
-           path="vendor/lineage" remote="github" revision="nx809j-evo123" />
+           path="vendor/lineage" remote="github" revision="nx809j-evo123-1009" />
 
   <!-- ===== LineageOS / AOSP forks ===== -->
   <remove-project name="LineageOS/android_hardware_lineage_interfaces" path="hardware/lineage/interfaces" />
@@ -107,13 +109,13 @@
 
   <remove-project name="LineageOS/android_packages_apps_Launcher3" path="packages/apps/Launcher3" />
   <project name="IronShing/android_packages_apps_Launcher3"
-           path="packages/apps/Launcher3" remote="github" revision="nx809j-evo123" groups="pdk-fs,sysui-studio,pdk-cw-tvc" />
+           path="packages/apps/Launcher3" remote="github" revision="nx809j-evo123-1009" groups="pdk-fs,sysui-studio,pdk-cw-tvc" />
 
   <remove-project name="LineageOS/android_packages_apps_Dialer" path="packages/apps/Dialer" />
   <project name="IronShing/android_packages_apps_Dialer"
-           path="packages/apps/Dialer" remote="github" revision="nx809j-evo123" groups="pdk-fs" />
+           path="packages/apps/Dialer" remote="github" revision="nx809j-evo123-1009" groups="pdk-fs" />
 
   <remove-project name="LineageOS/android_packages_inputmethods_LatinIME" path="packages/inputmethods/LatinIME" />
   <project name="IronShing/android_packages_inputmethods_LatinIME"
-           path="packages/inputmethods/LatinIME" remote="github" revision="nx809j-evo123" groups="pdk-fs" />
+           path="packages/inputmethods/LatinIME" remote="github" revision="nx809j-evo123-1009" groups="pdk-fs" />
 </manifest>
