@@ -94,6 +94,8 @@ public class RmApp extends Application {
         // applies them at boot on its own; this re-arms the "allow for 10 min" expiry alarm)
         // and watch for blocked attempts to offer the temporary allowance.
         PrivacyGuard.start(this);
+        // "Stop apps after leaving them" (user list, e.g. Stremio's always-on streaming server).
+        BackgroundStop.start(this);
         // Android Auto: lift mic/location for opted-in apps while AA (car mode) is connected.
         CarModeWatcher.start(this);
         OtpSms.start(this);

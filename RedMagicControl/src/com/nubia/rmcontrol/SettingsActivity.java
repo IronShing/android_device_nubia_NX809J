@@ -270,6 +270,9 @@ public class SettingsActivity extends Activity {
         header(system, "Google add-ons");
         addonsSection(system);
 
+        header(system, "Stop apps after leaving them");
+        backgroundStopSection(system);
+
         header(system, "Logs");
         logCaptureSection(system);
 
@@ -1800,6 +1803,88 @@ public class SettingsActivity extends Activity {
     // alarm class Doze is NOT allowed to defer, which makes it the largest idle waker on a stock
     // build and immune to every Doze setting above it in this screen.
     // ---- Reset settings to defaults, keep files/accounts/apps (XDA #157, NX123Dos) -----------
+    // ---------- Stop apps after leaving them (BackgroundStop) ----------
+    private static final int[] BG_STOP_MINUTES = {5, 10, 30};
+
+    private void backgroundStopSection(LinearLayout root) {
+        note(root, "The apps you pick are force-stopped once they've been in the background this "
+                + "long \u2014 unless they're playing audio or video, or casting. For apps that keep a "
+                + "background service running that you get nothing from, like a streaming server.");
+
+        LinearLayout delayRow = labelledRow(root, "Stop after");
+        final Spinner sp = new Spinner(this);
+        final String[] names = new String[BG_STOP_MINUTES.length];
+        int sel = 1;
+        for (int i = 0; i < BG_STOP_MINUTES.length; i++) {
+            names[i] = BG_STOP_MINUTES[i] + " min";
+            if (BG_STOP_MINUTES[i] == BackgroundStop.minutes(this)) sel = i;
+        }
+        sp.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        sp.setSelection(sel);
+        sp.setOnItemSelectedListener(new SimpleSel() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                BackgroundStop.setMinutes(SettingsActivity.this, BG_STOP_MINUTES[pos]);
+            }
+        });
+        delayRow.addView(sp);
+
+        LinearLayout appsRow = labelledRow(root, "Apps");
+        final Button pick = new Button(this);
+        pick.setText(backgroundStopSummary());
+        pick.setOnClickListener(v -> pickBackgroundStopApps(pick));
+        appsRow.addView(pick);
+    }
+
+    private String backgroundStopSummary() {
+        final java.util.Set<String> pkgs = BackgroundStop.packages(this);
+        if (pkgs.isEmpty()) return "Choose";
+        final PackageManager pm = getPackageManager();
+        final java.util.List<String> labels = new java.util.ArrayList<>();
+        for (String pkg : pkgs) {
+            try {
+                labels.add(String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0))));
+            } catch (Exception e) {
+                labels.add(pkg);
+            }
+        }
+        java.util.Collections.sort(labels);
+        return labels.size() <= 2 ? String.join(", ", labels)
+                : labels.get(0) + ", " + labels.get(1) + " +" + (labels.size() - 2);
+    }
+
+    /** Multi-select over launchable apps (not this one); the chosen set is saved on OK. */
+    private void pickBackgroundStopApps(Button summary) {
+        final PackageManager pm = getPackageManager();
+        final Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        final java.util.TreeMap<String, String> byLabel = new java.util.TreeMap<>(
+                String.CASE_INSENSITIVE_ORDER);
+        for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(probe, 0)) {
+            final String pkg = ri.activityInfo.packageName;
+            if (getPackageName().equals(pkg)) continue;
+            byLabel.put(String.valueOf(ri.loadLabel(pm)) + "\u0000" + pkg, pkg);
+        }
+        final String[] pkgs = byLabel.values().toArray(new String[0]);
+        final String[] labels = new String[pkgs.length];
+        int i = 0;
+        for (String k : byLabel.keySet()) labels[i++] = k.substring(0, k.indexOf('\u0000'));
+        final java.util.Set<String> chosen = BackgroundStop.packages(this);
+        final boolean[] checked = new boolean[pkgs.length];
+        for (int j = 0; j < pkgs.length; j++) checked[j] = chosen.contains(pkgs[j]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Stop after leaving")
+                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setPositiveButton("OK", (d, w) -> {
+                    final java.util.Set<String> out = new java.util.HashSet<>();
+                    // keep entries for apps that are no longer launchable, so nothing silently drops
+                    for (String old : chosen) if (!java.util.Arrays.asList(pkgs).contains(old)) out.add(old);
+                    for (int j = 0; j < pkgs.length; j++) if (checked[j]) out.add(pkgs[j]);
+                    BackgroundStop.setPackages(this, out);
+                    summary.setText(backgroundStopSummary());
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void logCaptureSection(LinearLayout root) {
         LinearLayout row = labelledRow(root, "\"Capture log\" in the power menu");
         final Switch sw = new Switch(this);
