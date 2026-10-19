@@ -1,0 +1,4 @@
+# smp2p_sleepstate driver unbind node
+type sysfs_smp2p_sleepstate, fs_type, sysfs_type;
+
+allow vendor_init sysfs_smp2p_sleepstate:file rw_file_perms;
