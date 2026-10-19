@@ -85,3 +85,9 @@ on boot
     # Mode config: settings put system fourth_physical_key_function_value <MODE>
     chmod 0660 /dev/input/event1
     chown system system /dev/input/event1
+
+    # Deep sleep fix: Unbind legacy smp2p_sleepstate driver (vendor_dlkm).
+    # Its interrupt handler asserts a 200ms pm_wakeup_ws_event on SMP2P edge
+    # transitions during PM_SUSPEND_PREPARE, causing freeze_processes() to abort
+    # with -EBUSY on every kernel s2idle attempt.
+    write /sys/bus/platform/drivers/smp2p_sleepstate/unbind "soc:qcom,smp2p_sleepstate"

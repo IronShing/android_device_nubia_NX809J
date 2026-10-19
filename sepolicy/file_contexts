@@ -19,6 +19,9 @@
 # Haptic engine (confirmed: activate, activate_aw at /sys/class/leds/zte_vibrator/)
 /sys/class/leds/zte_vibrator(/.*)?                      u:object_r:sysfs_vibrator:s0
 
+# SMP2P sleepstate driver unbind node (prevent suspend abort loop)
+/sys/bus/platform/drivers/smp2p_sleepstate(/.*)?        u:object_r:sysfs_smp2p_sleepstate:s0
+
 # ZTE renamed the QTI keymint HAL binary to "onekeymint" but shipped no matching
 # file_contexts label in the LOS tree, so the built vendor left it u:object_r:vendor_file
 # (generic) -> NO SELinux domain transition -> keymint ran in the init domain, never
